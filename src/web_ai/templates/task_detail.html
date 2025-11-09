@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel detail-panel" data-task-id="{{ task_id }}">
+    <div class="panel-header">
+        <div>
+            <h2>Task detail</h2>
+            <p class="muted">Inspect progress, chat, and the preserved browser session.</p>
+        </div>
+        <div class="panel-actions">
+            <a class="ghost" href="/">Back to tasks</a>
+        </div>
+    </div>
+    <div class="detail-status">
+        <span id="detail-status" class="status-pill muted">Loading…</span>
+    </div>
+    <div id="detail-content">
+        <p class="muted">Loading task details…</p>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/task_detail.js" defer></script>
+{% endblock %}

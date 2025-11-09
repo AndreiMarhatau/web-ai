@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel create-panel">
+    <div class="panel-header">
+        <div>
+            <h2>Launch task</h2>
+            <p class="muted">Define the goal, instructions, and model configuration.</p>
+        </div>
+    </div>
+    <form id="create-task-form">
+        <label>
+            Title
+            <input type="text" name="title" placeholder="Summarize what you want automated" required />
+        </label>
+        <label>
+            Instructions
+            <textarea name="instructions" rows="6" placeholder="Describe what the agent should accomplish" required></textarea>
+        </label>
+        <label>
+            OpenAI Model
+            <select name="model" id="model-select"></select>
+        </label>
+        <label>
+            Reasoning effort
+            <select name="reasoning_effort" id="reasoning-select">
+                <option value="">Automatic</option>
+            </select>
+        </label>
+        <label>
+            Max steps
+            <input type="number" name="max_steps" min="1" max="200" value="80" />
+        </label>
+        <label class="checkbox">
+            <input type="checkbox" name="leave_browser_open" />
+            Keep browser open after completion
+        </label>
+        <div class="form-actions">
+            <button type="submit">Launch task</button>
+            <a class="ghost" href="/">Back to tasks</a>
+        </div>
+    </form>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/create.js" defer></script>
+{% endblock %}
