@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>Web AI Tasks</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="/static/css/main.css" />
+</head>
+<body data-refresh="{{ refresh_seconds }}">
+    <header class="app-header">
+        <div>
+            <h1>Web AI</h1>
+            <p>Manage Browser-Use automation tasks with persistent history.</p>
+        </div>
+        <div class="status-pill" id="api-status">Loading…</div>
+    </header>
+
+    <main class="app-layout">
+        <section class="panel create-panel">
+            <h2>Create Task</h2>
+            <form id="create-task-form">
+                <label>
+                    Title
+                    <input type="text" name="title" placeholder="Summarize the task" required />
+                </label>
+                <label>
+                    Instructions
+                    <textarea name="instructions" rows="5" placeholder="Describe what the agent should accomplish" required></textarea>
+                </label>
+                <label>
+                    OpenAI Model
+                    <select name="model" id="model-select"></select>
+                </label>
+                <label>
+                    Reasoning effort
+                    <select name="reasoning_effort" id="reasoning-select">
+                        <option value="">Automatic</option>
+                    </select>
+                </label>
+                <label>
+                    Max steps
+                    <input type="number" name="max_steps" min="1" max="200" value="80" />
+                </label>
+                <label class="checkbox">
+                    <input type="checkbox" name="leave_browser_open" />
+                    Keep browser running after completion
+                </label>
+                <button type="submit">Launch task</button>
+            </form>
+        </section>
+
+        <section class="panel list-panel">
+            <div class="panel-header">
+                <h2>Tasks</h2>
+                <button type="button" id="refresh-btn">Refresh</button>
+            </div>
+            <div id="tasks-container">
+                <p class="muted">No tasks yet.</p>
+            </div>
+        </section>
+
+        <section class="panel detail-panel" id="detail-panel">
+            <div class="panel-header">
+                <h2>Task Details</h2>
+                <span id="detail-status" class="status-pill muted">None selected</span>
+            </div>
+            <div id="detail-content">
+                <p class="muted">Select a task to inspect progress, screenshots, and history.</p>
+            </div>
+        </section>
+    </main>
+
+    <script src="/static/js/app.js" defer></script>
+</body>
+</html>
