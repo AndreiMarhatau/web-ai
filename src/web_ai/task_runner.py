@@ -165,6 +165,7 @@ class TaskRuntime:
     asyncio_task: Optional[asyncio.Task] = None
     assistance_event: Optional[asyncio.Event] = None
     pending_response: Optional[str] = None
+    step_offset: int = 0
     step_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
     @property
@@ -311,6 +312,7 @@ class TaskManager:
 
     async def _run_task(self, runtime: TaskRuntime) -> None:
         record = runtime.record
+        runtime.step_offset = record.step_count
         record.status = TaskStatus.running
         record.browser_open = True
         record.updated_at = utcnow()
@@ -381,6 +383,36 @@ class TaskManager:
             record.updated_at = utcnow()
             await self.storage.save_async(runtime.data)
 
+    async def continue_task(self, task_id: str, instructions: str) -> TaskDetail | None:
+        runtime = self.get_task(task_id)
+        if not runtime:
+            return None
+        if runtime.asyncio_task and not runtime.asyncio_task.done():
+            raise RuntimeError("Task is already running.")
+        additional = instructions.strip()
+        if not additional:
+            raise ValueError("Additional instructions are required to continue.")
+
+        record = runtime.record
+        record.instructions = "\n\n".join(
+            part for part in (record.instructions, additional) if part
+        )
+        record.status = TaskStatus.pending
+        record.browser_open = False
+        record.last_error = None
+        record.result_summary = None
+        record.completed_at = None
+        record.needs_attention = False
+        record.assistance = None
+        record.updated_at = utcnow()
+        runtime.data.chat_history.append(
+            ChatMessage(role=ChatRole.user, content=additional)
+        )
+        await self.storage.save_async(runtime.data)
+
+        runtime.asyncio_task = asyncio.create_task(self._run_task(runtime))
+        return self.get_task_detail(task_id)
+
     def _build_llm(self, record: TaskRecord) -> ChatOpenAI:
         if not self.settings.openai_api_key:
             raise RuntimeError(
@@ -410,9 +442,10 @@ class TaskManager:
         async def _on_step(state: BrowserState, output: AgentOutput, step_num: int) -> None:
             async with runtime.step_lock:
                 summary = _format_agent_output(output)
+                actual_step_number = runtime.step_offset + step_num
                 runtime.data.steps.append(
                     TaskStep(
-                        step_number=step_num,
+                        step_number=actual_step_number,
                         summary_html=summary,
                         screenshot_b64=getattr(state, "screenshot", None),
                         url=getattr(state, "url", None),
@@ -424,10 +457,10 @@ class TaskManager:
                 runtime.data.chat_history.append(
                     ChatMessage(
                         role=ChatRole.assistant,
-                        content=f"Step {step_num} completed.",
+                        content=f"Step {actual_step_number} completed.",
                     )
                 )
-                runtime.record.step_count = step_num
+                runtime.record.step_count = actual_step_number
                 runtime.record.status = (
                     TaskStatus.waiting_for_input
                     if runtime.record.needs_attention

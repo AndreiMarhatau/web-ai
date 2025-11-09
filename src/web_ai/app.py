@@ -134,6 +134,9 @@ def create_app() -> FastAPI:
     class AssistPayload(BaseModel):
         message: str
 
+    class ContinuePayload(BaseModel):
+        instructions: str
+
     @app.post("/api/tasks/{task_id}/assist")
     async def provide_assistance(
         task_id: str,
@@ -144,6 +147,23 @@ def create_app() -> FastAPI:
         detail = await manager.submit_assistance(task_id, payload.message.strip())
         if not detail:
             raise HTTPException(status_code=404, detail="Task not awaiting assistance.")
+        return serialize_detail(detail)
+
+    @app.post("/api/tasks/{task_id}/continue")
+    async def continue_task(
+        task_id: str,
+        payload: ContinuePayload,
+        ctx: tuple[TaskManager, Settings] = Depends(get_ctx),
+    ):
+        manager, _ = ctx
+        try:
+            detail = await manager.continue_task(task_id, payload.instructions)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc))
+        if not detail:
+            raise HTTPException(status_code=404, detail="Task not found")
         return serialize_detail(detail)
 
     @app.post("/api/tasks/{task_id}/close-browser")

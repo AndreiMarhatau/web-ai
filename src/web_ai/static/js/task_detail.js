@@ -55,6 +55,22 @@ function renderDetail(detail) {
     );
   }
 
+  const canContinue = !["pending", "running", "waiting_for_input"].includes(
+    record.status
+  );
+  const continuationSection = canContinue
+    ? `
+      <div class="section">
+        <h3>Continue task</h3>
+        <p class="muted">Give the agent a follow-up instruction with the existing session.</p>
+        <form class="continue-form" data-task="${record.id}">
+          <textarea name="instructions" placeholder="Describe what to do next"></textarea>
+          <button type="submit">Continue task</button>
+        </form>
+      </div>
+    `
+    : "";
+
   const html = `
     <div class="detail-grid">
       <div class="section">
@@ -114,6 +130,8 @@ function renderDetail(detail) {
         </div>
       </div>
 
+      ${continuationSection}
+
       ${
         record.needs_attention
           ? `
@@ -131,6 +149,32 @@ function renderDetail(detail) {
     </div>
   `;
   content.innerHTML = html;
+
+  if (canContinue) {
+    const continueForm = content.querySelector(".continue-form");
+    if (continueForm) {
+      continueForm.addEventListener("submit", async (evt) => {
+        evt.preventDefault();
+        const instructions = continueForm.instructions.value.trim();
+        if (!instructions) {
+          alert("Please describe what the agent should do next.");
+          return;
+        }
+        try {
+          await webAI.api(`/api/tasks/${record.id}/continue`, {
+            method: "POST",
+            body: JSON.stringify({ instructions }),
+          });
+          continueForm.reset();
+          webAI.setStatus("Task continuation queued", "success");
+          await loadDetail();
+        } catch (err) {
+          alert(err.message);
+          webAI.setStatus(err.message, "danger");
+        }
+      });
+    }
+  }
 
   if (record.needs_attention) {
     const assistForm = content.querySelector(".assist-form");
