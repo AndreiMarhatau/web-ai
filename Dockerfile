@@ -62,7 +62,7 @@ RUN mkdir -p /etc/apt/keyrings \
 WORKDIR /app
 
 # Copy requirements and install dependencies
-COPY web-ai/requirements.txt /tmp/web-ai/requirements.txt
+COPY requirements.txt /tmp/web-ai/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/web-ai/requirements.txt
 
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-browsers
@@ -72,10 +72,10 @@ RUN PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=0 playwright install chromium
 ENV PYTHONPATH=/app/web-ai/src
 
 # Copy application code
-COPY web-ai /app/web-ai
+COPY . /app/web-ai
 
 RUN mkdir -p /var/log/supervisor
-COPY web-ai/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 EXPOSE 7790 6180 5902 9223
 
