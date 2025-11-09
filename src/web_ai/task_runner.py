@@ -195,27 +195,33 @@ class TaskManager:
                 persisted.record.id, persisted.record.vnc_token
             )
             # Tasks that were running before a restart are now stopped
+            needs_save = False
+            if persisted.record.browser_open:
+                persisted.record.browser_open = False
+                needs_save = True
             if persisted.record.status in {
                 TaskStatus.running,
                 TaskStatus.pending,
                 TaskStatus.waiting_for_input,
             }:
                 persisted.record.status = TaskStatus.stopped
-                persisted.record.browser_open = False
-                persisted.record.updated_at = utcnow()
                 persisted.record.needs_attention = False
+                needs_save = True
+            if needs_save:
+                persisted.record.updated_at = utcnow()
                 await self.storage.save_async(persisted)
 
     def list_tasks(self) -> list[TaskSummary]:
         summaries: list[TaskSummary] = []
         for runtime in self._tasks.values():
             record = runtime.record
+            browser_open = self._sync_browser_state(runtime)
             summaries.append(
                 TaskSummary(
                     id=record.id,
                     title=record.title,
                     status=record.status,
-                    browser_open=record.browser_open,
+                    browser_open=browser_open,
                     leave_browser_open=record.leave_browser_open,
                     needs_attention=record.needs_attention,
                     created_at=record.created_at,
@@ -230,10 +236,19 @@ class TaskManager:
     def get_task(self, task_id: str) -> TaskRuntime | None:
         return self._tasks.get(task_id)
 
+    def _is_browser_active(self, runtime: TaskRuntime) -> bool:
+        return runtime.browser_context is not None
+
+    def _sync_browser_state(self, runtime: TaskRuntime) -> bool:
+        browser_open = self._is_browser_active(runtime)
+        runtime.record.browser_open = browser_open
+        return browser_open
+
     def get_task_detail(self, task_id: str) -> TaskDetail | None:
         runtime = self._tasks.get(task_id)
         if not runtime:
             return None
+        self._sync_browser_state(runtime)
         record = runtime.record
         vnc_url = f"/tasks/{record.id}/vnc?token={record.vnc_token}"
         return TaskDetail(
