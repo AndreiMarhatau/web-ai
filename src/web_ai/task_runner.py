@@ -559,7 +559,7 @@ class TaskManager:
             )
         )
         try:
-            page = await runtime.browser_context.new_page()
+            page = await runtime.browser_context.get_agent_current_page()
             last_url = runtime.data.steps[-1].url if runtime.data.steps else None
             if last_url:
                 await page.goto(last_url)
