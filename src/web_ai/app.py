@@ -46,10 +46,38 @@ def create_app() -> FastAPI:
     async def index(request: Request, ctx: tuple[TaskManager, Settings] = Depends(get_ctx)):
         _, config = ctx
         return templates.TemplateResponse(
-            "index.html",
+            "tasks.html",
             {
                 "request": request,
                 "refresh_seconds": config.frontend_refresh_seconds,
+                "active_page": "tasks",
+            },
+        )
+
+    @app.get("/tasks/new", response_class=HTMLResponse)
+    async def new_task_page(request: Request, ctx: tuple[TaskManager, Settings] = Depends(get_ctx)):
+        _, config = ctx
+        return templates.TemplateResponse(
+            "create_task.html",
+            {
+                "request": request,
+                "refresh_seconds": 0,
+                "active_page": "new",
+            },
+        )
+
+    @app.get("/tasks/{task_id}", response_class=HTMLResponse)
+    async def task_detail_page(
+        task_id: str, request: Request, ctx: tuple[TaskManager, Settings] = Depends(get_ctx)
+    ):
+        _, config = ctx
+        return templates.TemplateResponse(
+            "task_detail.html",
+            {
+                "request": request,
+                "refresh_seconds": config.frontend_refresh_seconds,
+                "active_page": "detail",
+                "task_id": task_id,
             },
         )
 
