@@ -19,6 +19,7 @@ docker compose -f docker-compose.webai.yml up -d --build
 ```
 
 The UI will be available on `http://localhost:7790` (configurable via `WEB_AI_PORT`).
+Set `WEB_AI_APP_URL` when exposing the UI through a different hostname or proxy so VNC links open the published URL instead of `localhost`.
 
 - Supported OpenAI models exposed in the UI: `gpt-5`, `gpt-5-mini`, `gpt-5-nano`.
 - Reasoning effort slider offers `low`, `medium`, `high`, or automatic (unset) to forward along OpenAI’s reasoning settings.

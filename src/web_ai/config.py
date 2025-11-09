@@ -21,9 +21,19 @@ class Settings(BaseSettings):
     # Application
     app_host: str = Field(default="0.0.0.0", validation_alias="WEB_AI_HOST")
     app_port: int = Field(default=7790, validation_alias="WEB_AI_PORT")
+    app_url: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("WEB_AI_APP_URL", "APP_URL"),
+    )
     frontend_refresh_seconds: int = Field(
         default=3, validation_alias="WEB_AI_FRONTEND_REFRESH_SECONDS"
     )
+
+    @property
+    def app_public_url(self) -> str:
+        """Return the base URL clients should use to reach this app."""
+        raw_url = self.app_url or f"http://localhost:{self.app_port}"
+        return raw_url.rstrip("/")
 
     # OpenAI-only agent defaults
     openai_model: str = Field(

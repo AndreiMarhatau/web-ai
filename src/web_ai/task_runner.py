@@ -235,7 +235,8 @@ class TaskManager:
         if not runtime:
             return None
         record = runtime.record
-        vnc_url = f"/tasks/{record.id}/vnc?token={record.vnc_token}"
+        base_url = self.settings.app_public_url
+        vnc_url = f"{base_url}/tasks/{record.id}/vnc?token={record.vnc_token}"
         return TaskDetail(
             record=record,
             steps=runtime.data.steps,
