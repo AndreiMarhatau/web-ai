@@ -1,6 +1,5 @@
 FROM python:3.11-slim-bookworm
 
-ARG TARGETPLATFORM
 ARG NODE_MAJOR=20
 
 RUN apt-get update && apt-get install -y \
