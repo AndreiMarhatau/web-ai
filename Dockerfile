@@ -74,6 +74,8 @@ ENV PYTHONPATH=/app/web-ai/src
 # Copy application code
 COPY . /app/web-ai
 
+RUN cd /app/web-ai/frontend && npm install && npm run build
+
 RUN mkdir -p /var/log/supervisor
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 

@@ -9,33 +9,44 @@ The `web-ai` service exposes a FastAPI dashboard that manages Browser-Use automa
 - Assign each task a secure VNC token so that the embedded noVNC proxy can only be opened through the Web-AI UI.
 - Keep finished browsers alive (one per task) and close them manually when no longer needed.
 - Respond to `ask_human` actions directly from the task detail pane.
+- Serve a modern React SPA (Material UI based) from `frontend/dist` so the dashboard is dynamic without frequent page reloads.
 
 ## Running locally
 
 ```bash
 cp .env.webai.example .env.webai
 # fill in OPENAI_API_KEY, adjust host/ports if needed
-docker compose -f docker-compose.webai.yml up -d --build
+cd frontend
+npm install
+npm run build
+cd ..
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+export PYTHONPATH=$(pwd)/src
+python webai.py
 ```
 
-The UI will be available on `http://localhost:7790` (configurable via `WEB_AI_PORT`).
+Access the UI at `http://localhost:7790` (configurable via `WEB_AI_PORT`).
 
 - Supported OpenAI models exposed in the UI: `gpt-5`, `gpt-5-mini`, `gpt-5-nano`.
-- Reasoning effort slider offers `low`, `medium`, `high`, or automatic (unset) to forward along OpenAI’s reasoning settings.
-
+- Reasoning effort options: `low`, `medium`, `high`, or automatic (unset).
 - Task data is stored inside the `webai_data` Docker volume (`/app/data` inside the container).
-- VNC viewer is proxied through the Web-AI server; every task gets a unique token.
-- When the container stops, tasks remain accessible thanks to the persisted JSON history.
+- VNC viewer is proxied through the Web-AI server; each task gets a unique token.
+- Finished sessions stay available thanks to persisted JSON histories.
+
+You can also build the full service via Docker Compose; the frontend build is executed inside the image:
+
+```bash
+docker compose -f docker-compose.webai.yml up -d --build
+```
 
 ## Development
 
 ```bash
-cd web-ai
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-export PYTHONPATH=$(pwd)/src:../web-ui/src
-python webai.py
+cd frontend
+npm install
+npm run dev
 ```
 
-Then open `http://localhost:7790`.
+The Vite dev server proxies `/api` to `http://localhost:7790`, so run the FastAPI app in parallel (see running locally above) and then open `http://localhost:5173` for the instant-refresh interface.
