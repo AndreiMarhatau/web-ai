@@ -417,6 +417,10 @@ class TaskManager:
         )
         await self.storage.save_async(runtime.data)
 
+        # Close any existing browser session from the prior run so we don't leak
+        # processes or leave a stale VNC instance running in the background.
+        await self._close_browser(runtime)
+
         runtime.asyncio_task = asyncio.create_task(self._run_task(runtime))
         return self.get_task_detail(task_id)
 
