@@ -6,8 +6,6 @@ services:
     build:
       context: https://github.com/AndreiMarhatau/web-ai.git#main
       dockerfile: Dockerfile
-      args:
-        TARGETPLATFORM: ${TARGETPLATFORM:-linux/amd64}
     ports:
       - "${WEB_AI_PORT:-7790}:7790"
       - "${VNC_HTTP_PORT:-6180}:6180"

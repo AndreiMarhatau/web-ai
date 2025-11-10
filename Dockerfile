@@ -1,6 +1,5 @@
 FROM python:3.11-slim-bookworm
 
-ARG TARGETPLATFORM
 ARG NODE_MAJOR=20
 
 RUN apt-get update && apt-get install -y \
@@ -73,6 +72,8 @@ ENV PYTHONPATH=/app/web-ai/src
 
 # Copy application code
 COPY . /app/web-ai
+
+RUN cd /app/web-ai/frontend && npm install && npm run build
 
 RUN mkdir -p /var/log/supervisor
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf

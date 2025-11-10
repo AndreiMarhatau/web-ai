@@ -7,6 +7,7 @@ import os
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
+import re
 from typing import Any, Callable, Coroutine, Optional
 
 # The upstream telemetry client uses dataclasses.asdict(), which currently crashes when
@@ -55,6 +56,14 @@ from .storage import TaskStorage
 from .vnc import VNCManager
 
 logger = logging.getLogger(__name__)
+
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _strip_html(value: str | None) -> str:
+    if not value:
+        return ""
+    return _HTML_TAG_RE.sub("", value).strip()
 
 
 def _serialize_browser_state(state: BrowserState | None) -> dict[str, Any] | None:
@@ -345,12 +354,15 @@ class TaskManager:
                     window_height=self.settings.browser_height,
                 )
             )
+            if runtime.data.steps:
+                await self._restore_last_session(runtime)
 
             register_step = self._build_step_callback(runtime)
             register_done = self._build_done_callback(runtime)
 
+            agent_task = self._compose_task_prompt(runtime)
             runtime.agent = BrowserUseAgent(
-                task=record.instructions,
+                task=agent_task,
                 llm=self._build_llm(record),
                 browser=runtime.browser,
                 browser_context=runtime.browser_context,
@@ -381,6 +393,37 @@ class TaskManager:
             record.updated_at = utcnow()
             await self.storage.save_async(runtime.data)
 
+    async def continue_task(self, task_id: str, instructions: str) -> TaskDetail | None:
+        runtime = self.get_task(task_id)
+        if not runtime:
+            return None
+        if runtime.asyncio_task and not runtime.asyncio_task.done():
+            raise RuntimeError("Task is already running.")
+        additional = instructions.strip()
+        if not additional:
+            raise ValueError("Additional instructions are required to continue.")
+
+        record = runtime.record
+        record.status = TaskStatus.pending
+        record.browser_open = False
+        record.last_error = None
+        record.result_summary = None
+        record.completed_at = None
+        record.needs_attention = False
+        record.assistance = None
+        record.updated_at = utcnow()
+        runtime.data.chat_history.append(
+            ChatMessage(role=ChatRole.user, content=additional)
+        )
+        await self.storage.save_async(runtime.data)
+
+        # Close any existing browser session from the prior run so we don't leak
+        # processes or leave a stale VNC instance running in the background.
+        await self._close_browser(runtime)
+
+        runtime.asyncio_task = asyncio.create_task(self._run_task(runtime))
+        return self.get_task_detail(task_id)
+
     def _build_llm(self, record: TaskRecord) -> ChatOpenAI:
         if not self.settings.openai_api_key:
             raise RuntimeError(
@@ -404,15 +447,73 @@ class TaskManager:
 
         return ChatOpenAI(**client_kwargs)
 
+    def _compose_task_prompt(self, runtime: TaskRuntime) -> str:
+        chat_history = runtime.data.chat_history
+        initial_goal = (
+            chat_history[0].content if chat_history else runtime.record.instructions
+        )
+        followups = [
+            msg.content
+            for msg in chat_history[1:]
+            if msg.role == ChatRole.user and msg.content.strip()
+        ]
+        latest_followup = followups[-1] if followups else ""
+        previous_followups = followups[:-1][-4:]
+
+        sections: list[str] = []
+        if initial_goal:
+            sections.append("Primary goal:\n" + initial_goal.strip())
+        if previous_followups:
+            bullets = "\n".join(f"- {text}" for text in previous_followups)
+            sections.append("Earlier follow-up requests:\n" + bullets)
+        if latest_followup:
+            sections.append("Current follow-up request:\n" + latest_followup.strip())
+
+        step_summaries: list[str] = []
+        for step in runtime.data.steps[-5:]:
+            summary = _strip_html(step.summary_html)
+            if not summary and step.title:
+                summary = step.title
+            if not summary and step.url:
+                summary = f"Visited {step.url}"
+            summary = summary or "No summary provided."
+            step_summaries.append(f"Step {step.step_number}: {summary}")
+        if step_summaries:
+            sections.append(
+                "Completed steps so far:\n" + "\n".join(step_summaries)
+            )
+
+        sections.append(
+            "Continue from the existing browser session. Build on the completed work instead of starting over."
+        )
+        return "\n\n".join(section for section in sections if section.strip())
+
+    async def _restore_last_session(self, runtime: TaskRuntime) -> None:
+        """Best-effort attempt to reopen the last visited URL for a continued task."""
+        if not runtime.browser_context:
+            return
+        if not runtime.data.steps:
+            return
+        last_url = runtime.data.steps[-1].url
+        if not last_url:
+            return
+        try:
+            page = await runtime.browser_context.get_agent_current_page()
+            await page.goto(last_url)
+            await page.wait_for_load_state()
+        except Exception:
+            logger.debug("Failed to restore last URL %s", last_url, exc_info=True)
+
     def _build_step_callback(
         self, runtime: TaskRuntime
     ) -> Callable[[BrowserState, AgentOutput, int], Coroutine[Any, Any, None]]:
         async def _on_step(state: BrowserState, output: AgentOutput, step_num: int) -> None:
             async with runtime.step_lock:
                 summary = _format_agent_output(output)
+                actual_step_number = runtime.record.step_count + 1
                 runtime.data.steps.append(
                     TaskStep(
-                        step_number=step_num,
+                        step_number=actual_step_number,
                         summary_html=summary,
                         screenshot_b64=getattr(state, "screenshot", None),
                         url=getattr(state, "url", None),
@@ -424,10 +525,10 @@ class TaskManager:
                 runtime.data.chat_history.append(
                     ChatMessage(
                         role=ChatRole.assistant,
-                        content=f"Step {step_num} completed.",
+                        content=f"Step {actual_step_number} completed.",
                     )
                 )
-                runtime.record.step_count = step_num
+                runtime.record.step_count = actual_step_number
                 runtime.record.status = (
                     TaskStatus.waiting_for_input
                     if runtime.record.needs_attention

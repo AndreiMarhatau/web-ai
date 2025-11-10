@@ -3,10 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from fastapi import Body, Depends, FastAPI, HTTPException, Request, Response
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi import Body, Depends, FastAPI, HTTPException, Response
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from .config import Settings, get_settings
@@ -20,20 +19,37 @@ BASE_MODELS = [
 ]
 
 
+class AssistPayload(BaseModel):
+    message: str
+
+
+class ContinuePayload(BaseModel):
+    instructions: str
+
+ROOT_DIR = Path(__file__).resolve().parents[2]
+FRONTEND_DIST = ROOT_DIR / "frontend" / "dist"
+FRONTEND_PLACEHOLDER = """
+<html>
+  <head>
+    <title>Frontend missing</title>
+  </head>
+  <body>
+    <h1>Frontend build not found</h1>
+    <p>Please run <code>npm install</code> and <code>npm run build</code> inside the <code>frontend</code> directory.</p>
+  </body>
+</html>
+"""
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
     manager = TaskManager(settings)
     supported_models = sorted(set(BASE_MODELS + [settings.openai_model]))
 
-    templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
-    static_dir = Path(__file__).parent / "static"
-
     app = FastAPI(title="Browser Web AI", version="0.1.0")
     app.state.settings = settings
     app.state.manager = manager
     app.state.supported_models = supported_models
-
-    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
     @app.on_event("startup")
     async def startup() -> None:  # pragma: no cover - FastAPI hook
@@ -41,45 +57,6 @@ def create_app() -> FastAPI:
 
     def get_ctx() -> tuple[TaskManager, Settings]:
         return app.state.manager, app.state.settings
-
-    @app.get("/", response_class=HTMLResponse)
-    async def index(request: Request, ctx: tuple[TaskManager, Settings] = Depends(get_ctx)):
-        _, config = ctx
-        return templates.TemplateResponse(
-            "tasks.html",
-            {
-                "request": request,
-                "refresh_seconds": config.frontend_refresh_seconds,
-                "active_page": "tasks",
-            },
-        )
-
-    @app.get("/tasks/new", response_class=HTMLResponse)
-    async def new_task_page(request: Request, ctx: tuple[TaskManager, Settings] = Depends(get_ctx)):
-        _, config = ctx
-        return templates.TemplateResponse(
-            "create_task.html",
-            {
-                "request": request,
-                "refresh_seconds": 0,
-                "active_page": "new",
-            },
-        )
-
-    @app.get("/tasks/{task_id}", response_class=HTMLResponse)
-    async def task_detail_page(
-        task_id: str, request: Request, ctx: tuple[TaskManager, Settings] = Depends(get_ctx)
-    ):
-        _, config = ctx
-        return templates.TemplateResponse(
-            "task_detail.html",
-            {
-                "request": request,
-                "refresh_seconds": config.frontend_refresh_seconds,
-                "active_page": "detail",
-                "task_id": task_id,
-            },
-        )
 
     @app.get("/healthz")
     async def healthcheck():
@@ -131,19 +108,33 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail="Task not found")
         return serialize_detail(detail)
 
-    class AssistPayload(BaseModel):
-        message: str
-
     @app.post("/api/tasks/{task_id}/assist")
     async def provide_assistance(
         task_id: str,
-        payload: AssistPayload,
+        payload: AssistPayload = Body(...),
         ctx: tuple[TaskManager, Settings] = Depends(get_ctx),
     ):
         manager, _ = ctx
         detail = await manager.submit_assistance(task_id, payload.message.strip())
         if not detail:
             raise HTTPException(status_code=404, detail="Task not awaiting assistance.")
+        return serialize_detail(detail)
+
+    @app.post("/api/tasks/{task_id}/continue")
+    async def continue_task(
+        task_id: str,
+        payload: ContinuePayload = Body(...),
+        ctx: tuple[TaskManager, Settings] = Depends(get_ctx),
+    ):
+        manager, _ = ctx
+        try:
+            detail = await manager.continue_task(task_id, payload.instructions)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc))
+        if not detail:
+            raise HTTPException(status_code=404, detail="Task not found")
         return serialize_detail(detail)
 
     @app.post("/api/tasks/{task_id}/close-browser")
@@ -201,6 +192,13 @@ def create_app() -> FastAPI:
         </html>
         """
         return HTMLResponse(content=html)
+
+    if FRONTEND_DIST.exists():
+        app.mount("/", StaticFiles(directory=str(FRONTEND_DIST), html=True), name="frontend")
+    else:
+        @app.get("/{full_path:path}", include_in_schema=False)
+        async def missing_frontend(full_path: str) -> HTMLResponse:
+            return HTMLResponse(content=FRONTEND_PLACEHOLDER, status_code=503)
 
     return app
 
