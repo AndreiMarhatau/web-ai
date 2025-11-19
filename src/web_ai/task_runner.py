@@ -6,6 +6,7 @@ import logging
 import os
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 import re
 from typing import Any, Callable, Coroutine, Optional
@@ -58,6 +59,14 @@ from .vnc import VNCManager
 logger = logging.getLogger(__name__)
 
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _normalize_datetime(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 def _strip_html(value: str | None) -> str:
@@ -194,6 +203,7 @@ class TaskManager:
         )
         self._tasks: dict[str, TaskRuntime] = {}
         self._lock = asyncio.Lock()
+        self._scheduler_task: Optional[asyncio.Task] = None
 
     async def startup(self) -> None:
         """Load persisted tasks and recreate VNC token file."""
@@ -203,6 +213,7 @@ class TaskManager:
             await self.vnc_manager.register_existing(
                 persisted.record.id, persisted.record.vnc_token
             )
+            persisted.record.scheduled_for = _normalize_datetime(persisted.record.scheduled_for)
             # Tasks that were running before a restart are now stopped
             needs_save = False
             if persisted.record.browser_open:
@@ -219,6 +230,9 @@ class TaskManager:
             if needs_save:
                 persisted.record.updated_at = utcnow()
                 await self.storage.save_async(persisted)
+        await self._start_due_scheduled_tasks()
+        if not self._scheduler_task:
+            self._scheduler_task = asyncio.create_task(self._scheduled_runner())
 
     def list_tasks(self) -> list[TaskSummary]:
         summaries: list[TaskSummary] = []
@@ -235,6 +249,7 @@ class TaskManager:
                     needs_attention=record.needs_attention,
                     created_at=record.created_at,
                     updated_at=record.updated_at,
+                    scheduled_for=record.scheduled_for,
                     step_count=record.step_count,
                     model_name=record.model_name,
                 )
@@ -283,11 +298,15 @@ class TaskManager:
             if payload.temperature is not None
             else self.settings.openai_temperature
         )
+        scheduled_for = _normalize_datetime(payload.scheduled_for)
+        if scheduled_for and scheduled_for <= utcnow():
+            raise ValueError("Scheduled start time must be in the future.")
 
         record = TaskRecord(
             id=task_id,
             title=payload.title,
             instructions=payload.instructions,
+            status=TaskStatus.scheduled if scheduled_for else TaskStatus.pending,
             leave_browser_open=payload.leave_browser_open,
             model_name=payload.model,
             temperature=temperature,
@@ -296,6 +315,7 @@ class TaskManager:
             max_actions_per_step=self.settings.max_actions_per_step,
             max_input_tokens=self.settings.max_input_tokens,
             use_vision=self.settings.use_vision,
+            scheduled_for=scheduled_for,
             vnc_token=token,
             browser_data_dir=str(browser_dir),
             downloads_dir=str(downloads_dir),
@@ -315,8 +335,24 @@ class TaskManager:
         async with self._lock:
             self._tasks[task_id] = runtime
             await self.storage.save_async(persisted)
-        runtime.asyncio_task = asyncio.create_task(self._run_task(runtime))
+        if record.status == TaskStatus.scheduled:
+            if not self._scheduler_task:
+                self._scheduler_task = asyncio.create_task(self._scheduled_runner())
+            return self.get_task_detail(task_id)
+
+        await self._enqueue_run(runtime)
         return self.get_task_detail(task_id)
+
+    async def _enqueue_run(self, runtime: TaskRuntime, *, clear_schedule: bool = False) -> None:
+        """Dispatch a runtime to run on the agent loop."""
+        if runtime.asyncio_task and not runtime.asyncio_task.done():
+            raise RuntimeError("Task is already running.")
+        runtime.record.status = TaskStatus.pending
+        if clear_schedule:
+            runtime.record.scheduled_for = None
+        runtime.record.updated_at = utcnow()
+        await self.storage.save_async(runtime.data)
+        runtime.asyncio_task = asyncio.create_task(self._run_task(runtime))
 
     async def _run_task(self, runtime: TaskRuntime) -> None:
         record = runtime.record
@@ -393,10 +429,24 @@ class TaskManager:
             record.updated_at = utcnow()
             await self.storage.save_async(runtime.data)
 
+    async def _start_due_scheduled_tasks(self) -> None:
+        """Start any scheduled tasks whose start time has arrived."""
+        now = utcnow()
+        for runtime in list(self._tasks.values()):
+            record = runtime.record
+            if record.status != TaskStatus.scheduled:
+                continue
+            if not record.scheduled_for:
+                continue
+            if record.scheduled_for <= now:
+                await self._enqueue_run(runtime, clear_schedule=True)
+
     async def continue_task(self, task_id: str, instructions: str) -> TaskDetail | None:
         runtime = self.get_task(task_id)
         if not runtime:
             return None
+        if runtime.record.status == TaskStatus.scheduled:
+            raise RuntimeError("Task is scheduled and has not started yet.")
         if runtime.asyncio_task and not runtime.asyncio_task.done():
             raise RuntimeError("Task is already running.")
         additional = instructions.strip()
@@ -422,6 +472,25 @@ class TaskManager:
         await self._close_browser(runtime)
 
         runtime.asyncio_task = asyncio.create_task(self._run_task(runtime))
+        return self.get_task_detail(task_id)
+
+    async def run_scheduled_now(self, task_id: str) -> TaskDetail | None:
+        runtime = self.get_task(task_id)
+        if not runtime or runtime.record.status != TaskStatus.scheduled:
+            return None
+        await self._enqueue_run(runtime, clear_schedule=True)
+        return self.get_task_detail(task_id)
+
+    async def reschedule_task(self, task_id: str, scheduled_for: datetime) -> TaskDetail | None:
+        runtime = self.get_task(task_id)
+        if not runtime or runtime.record.status != TaskStatus.scheduled:
+            return None
+        normalized = _normalize_datetime(scheduled_for)
+        if not normalized or normalized <= utcnow():
+            raise ValueError("Scheduled time must be in the future.")
+        runtime.record.scheduled_for = normalized
+        runtime.record.updated_at = utcnow()
+        await self.storage.save_async(runtime.data)
         return self.get_task_detail(task_id)
 
     def _build_llm(self, record: TaskRecord) -> ChatOpenAI:
@@ -699,6 +768,28 @@ class TaskManager:
                 logger.debug("Failed to close MCP client", exc_info=True)
             runtime.controller = None
         runtime.record.browser_open = False
+
+    async def _scheduled_runner(self) -> None:
+        try:
+            while True:
+                await self._start_due_scheduled_tasks()
+                await asyncio.sleep(self.settings.schedule_check_interval_seconds)
+        except asyncio.CancelledError:
+            logger.debug("Scheduled runner stopped")
+            raise
+        except Exception:
+            logger.exception("Scheduled runner crashed", exc_info=True)
+
+    async def shutdown(self) -> None:
+        if self._scheduler_task:
+            self._scheduler_task.cancel()
+            try:
+                await self._scheduler_task
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                pass
+            self._scheduler_task = None
 
     async def delete_task(self, task_id: str) -> bool:
         async with self._lock:

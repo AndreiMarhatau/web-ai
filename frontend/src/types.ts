@@ -1,5 +1,6 @@
 export type TaskStatus =
   | 'pending'
+  | 'scheduled'
   | 'running'
   | 'waiting_for_input'
   | 'completed'
@@ -16,6 +17,7 @@ export interface TaskSummary {
   needs_attention: boolean
   created_at: string
   updated_at: string
+  scheduled_for?: string | null
   step_count: number
   model_name: string
 }
@@ -60,4 +62,6 @@ export interface ConfigDefaults {
   openaiBaseUrl: string | null
   leaveBrowserOpen: boolean
   reasoningEffortOptions?: string[]
+  schedulingEnabled?: boolean
+  scheduleCheckSeconds?: number
 }

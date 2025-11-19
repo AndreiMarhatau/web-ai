@@ -63,6 +63,9 @@ class Settings(BaseSettings):
     downloads_dir_name: str = "downloads"
     recordings_dir_name: str = "recordings"
     traces_dir_name: str = "traces"
+    schedule_check_interval_seconds: float = Field(
+        default=1.5, validation_alias="WEB_AI_SCHEDULE_CHECK_INTERVAL_SECONDS"
+    )
 
     # VNC
     vnc_http_port: int = Field(

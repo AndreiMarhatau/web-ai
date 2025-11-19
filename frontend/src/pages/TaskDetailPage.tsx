@@ -19,7 +19,17 @@ import type { TaskDetail, TaskStatus } from '../types'
 import { useApiStatus } from '../contexts/apiStatus'
 import { statusTone } from '../utils/status'
 
-const blockedStatuses: TaskStatus[] = ['pending', 'running', 'waiting_for_input']
+const blockedStatuses: TaskStatus[] = ['pending', 'scheduled', 'running', 'waiting_for_input']
+
+function toInputDate(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return ''
+  }
+  const offset = date.getTimezoneOffset()
+  const local = new Date(date.getTime() - offset * 60000)
+  return local.toISOString().slice(0, 16)
+}
 
 function TaskDetailPage() {
   const { taskId } = useParams<{ taskId: string }>()
@@ -30,6 +40,9 @@ function TaskDetailPage() {
   const [assistanceText, setAssistanceText] = useState('')
   const [continuing, setContinuing] = useState(false)
   const [assisting, setAssisting] = useState(false)
+  const [scheduleInput, setScheduleInput] = useState('')
+  const [rescheduling, setRescheduling] = useState(false)
+  const [runningNow, setRunningNow] = useState(false)
 
   const loadDetail = useCallback(async () => {
     if (!taskId) {
@@ -54,6 +67,14 @@ function TaskDetailPage() {
     }, 5000)
     return () => clearInterval(timer)
   }, [loadDetail])
+
+  useEffect(() => {
+    if (detail?.record.scheduled_for) {
+      setScheduleInput(toInputDate(detail.record.scheduled_for))
+    } else {
+      setScheduleInput('')
+    }
+  }, [detail?.record.scheduled_for])
 
   const record = detail?.record
   const canContinue = Boolean(record && !blockedStatuses.includes(record.status))
@@ -111,6 +132,59 @@ function TaskDetailPage() {
       alert(message)
     } finally {
       setAssisting(false)
+    }
+  }
+
+  const handleRunNow = async () => {
+    if (!record) {
+      return
+    }
+    setRunningNow(true)
+    try {
+      await api(`/api/tasks/${record.id}/run-now`, { method: 'POST' })
+      setStatus('Scheduled task started', 'success')
+      await loadDetail()
+    } catch (err) {
+      const message = (err as Error).message
+      setStatus(message, 'danger')
+      alert(message)
+    } finally {
+      setRunningNow(false)
+    }
+  }
+
+  const handleReschedule = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!record) {
+      return
+    }
+    if (!scheduleInput) {
+      alert('Choose a start time to reschedule.')
+      return
+    }
+    const parsed = new Date(scheduleInput)
+    if (Number.isNaN(parsed.getTime())) {
+      alert('Invalid date/time.')
+      return
+    }
+    if (parsed.getTime() <= Date.now()) {
+      alert('Scheduled time must be in the future.')
+      return
+    }
+    setRescheduling(true)
+    try {
+      await api(`/api/tasks/${record.id}/schedule`, {
+        method: 'POST',
+        body: JSON.stringify({ scheduled_for: parsed.toISOString() }),
+      })
+      setStatus('Schedule updated', 'success')
+      await loadDetail()
+    } catch (err) {
+      const message = (err as Error).message
+      setStatus(message, 'danger')
+      alert(message)
+    } finally {
+      setRescheduling(false)
     }
   }
 
@@ -174,6 +248,11 @@ function TaskDetailPage() {
               <Typography variant="body2" color="text.secondary" paragraph>
                 {record?.instructions}
               </Typography>
+              <Typography variant="body2" color="text.secondary" paragraph>
+                {record?.scheduled_for
+                  ? `Scheduled for ${new Date(record.scheduled_for).toLocaleString()}`
+                  : 'No scheduled start time'}
+              </Typography>
               {record?.last_error && (
                 <Chip color="error" label={`Error: ${record.last_error}`} sx={{ mb: 2 }} />
               )}
@@ -195,6 +274,30 @@ function TaskDetailPage() {
               </Stack>
             </CardContent>
           </Card>
+
+          {record?.status === 'scheduled' && (
+            <Card variant="outlined">
+              <CardHeader title="Scheduling" subheader="This task will start automatically at the selected time." />
+              <CardContent component="form" onSubmit={handleReschedule} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <TextField
+                  type="datetime-local"
+                  label="Start time"
+                  value={scheduleInput}
+                  onChange={(event) => setScheduleInput(event.target.value)}
+                  required
+                  fullWidth
+                />
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                  <Button type="submit" variant="outlined" disabled={rescheduling}>
+                    {rescheduling ? 'Updating…' : 'Update schedule'}
+                  </Button>
+                  <Button variant="contained" onClick={handleRunNow} disabled={runningNow}>
+                    {runningNow ? 'Starting…' : 'Run now'}
+                  </Button>
+                </Stack>
+              </CardContent>
+            </Card>
+          )}
 
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={3}>
             <Card variant="outlined" sx={{ flex: 1 }}>

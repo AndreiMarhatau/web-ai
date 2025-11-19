@@ -13,6 +13,7 @@ def utcnow() -> datetime:
 
 class TaskStatus(str, Enum):
     pending = "pending"
+    scheduled = "scheduled"
     running = "running"
     waiting_for_input = "waiting_for_input"
     completed = "completed"
@@ -61,6 +62,7 @@ class TaskRecord(BaseModel):
     keepalive_requested: bool = False
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
+    scheduled_for: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     last_error: Optional[str] = None
     result_summary: Optional[str] = None
@@ -95,6 +97,7 @@ class TaskCreatePayload(BaseModel):
     max_steps: int = Field(default=80, ge=1, le=200)
     leave_browser_open: bool = False
     reasoning_effort: Optional[Literal["low", "medium", "high"]] = None
+    scheduled_for: Optional[datetime] = None
 
 
 class TaskSummary(BaseModel):
@@ -106,6 +109,7 @@ class TaskSummary(BaseModel):
     needs_attention: bool
     created_at: datetime
     updated_at: datetime
+    scheduled_for: Optional[datetime] = None
     step_count: int
     model_name: str
 

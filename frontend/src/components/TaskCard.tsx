@@ -10,6 +10,7 @@ interface TaskCardProps {
 }
 
 function TaskCard({ task, onDelete, deleting }: TaskCardProps) {
+  const scheduledLabel = task.scheduled_for ? new Date(task.scheduled_for).toLocaleString() : null
   return (
     <Card variant="outlined">
       <CardContent>
@@ -20,6 +21,9 @@ function TaskCard({ task, onDelete, deleting }: TaskCardProps) {
             </Typography>
             <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
               <Chip label={task.status} color={statusTone(task.status, task.needs_attention)} size="small" />
+              {scheduledLabel && (
+                <Chip label={`Starts ${scheduledLabel}`} color="warning" size="small" variant="outlined" />
+              )}
               {task.browser_open && <Chip label="Browser open" color="success" size="small" variant="outlined" />}
               {task.needs_attention && <Chip label="Needs input" color="warning" size="small" variant="outlined" />}
               <Chip label={`Steps: ${task.step_count}`} size="small" variant="outlined" />
