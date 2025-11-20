@@ -26,7 +26,7 @@ cd ..
 
 # run a node locally (stores tasks + browser data)
 export PYTHONPATH=$(pwd)/src
-WEB_AI_PORT=8001 WEB_AI_NODE_ID=local WEB_AI_NODE_REQUIRE_AUTH=false uv run python webai.py
+APP_PORT=8001 NODE_ID=local NODE_REQUIRE_AUTH=false uv run python webai.py
 
 # run the head locally (UI + routing)
 HEAD_NODES=http://localhost:8001|local HEAD_PORT=7790 uv run python webai_head.py
@@ -50,7 +50,7 @@ docker compose up -d --build
 
 Compose notes:
 - The head generates its keypair; nodes verify requests with the head public key. With the default auth-enabled setup, ensure the head writes `head_public.pem` to the shared `head_keys` volume before making authenticated calls. Nodes will reload trusted keys on demand, but secured APIs return 503 until the key exists.
-- For quick local bring-up without the head key, set `WEB_AI_NODE_REQUIRE_AUTH=false` on the node.
+- For quick local bring-up without the head key, set `NODE_REQUIRE_AUTH=false` on the node.
 - Sample `.env.head` (create this file or set env vars) — see `.env.head.example`:
 
 ```
@@ -58,7 +58,7 @@ HEAD_NODES=http://node:8001|default
 HEAD_PORT=7790
 ```
 
-- Sample `.env` for nodes (see `.env.node.example`): set `WEB_AI_OPENAI_API_KEY`, `WEB_AI_HEAD_PUBLIC_KEYS` (path or PEM), and `WEB_AI_NODE_ID`.
+- Sample `.env` for nodes (see `.env.node.example`): set `OPENAI_API_KEY`, `HEAD_PUBLIC_KEYS` (path or PEM), and `NODE_ID`.
 
 ## Development
 

@@ -30,22 +30,22 @@ services:
     depends_on:
       - head
     ports:
-      - "${WEB_AI_PORT:-8001}:8001"
+      - "${APP_PORT:-8001}:8001"
       - "${VNC_HTTP_PORT:-6180}:6180"
       - "${VNC_TCP_PORT:-5902}:5902"
       - "9223:9223"
     env_file:
       - .env.node
     environment:
-      WEB_AI_PORT: ${WEB_AI_PORT:-8001}
-      WEB_AI_HOST: 0.0.0.0
+      APP_PORT: ${APP_PORT:-8001}
+      APP_HOST: 0.0.0.0
       DISPLAY: ${DISPLAY:-:99}
       RESOLUTION: ${RESOLUTION:-1920x1080x24}
       VNC_TCP_PORT: ${VNC_TCP_PORT:-5902}
       VNC_HTTP_PORT: ${VNC_HTTP_PORT:-6180}
-      WEB_AI_NODE_ID: default
-      WEB_AI_NODE_NAME: default
-      WEB_AI_HEAD_PUBLIC_KEYS: /app/head-keys/head_public.pem
+      NODE_ID: default
+      NODE_NAME: default
+      HEAD_PUBLIC_KEYS: /app/head-keys/head_public.pem
     volumes:
       - node_data:/app/data
       - head_keys:/app/head-keys:ro
