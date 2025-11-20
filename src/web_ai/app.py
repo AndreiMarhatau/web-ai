@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+from datetime import datetime
 
 from fastapi import Body, Depends, FastAPI, HTTPException, Response
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from .config import Settings, get_settings
 from .models import TaskCreatePayload
@@ -25,6 +26,17 @@ class AssistPayload(BaseModel):
 
 class ContinuePayload(BaseModel):
     instructions: str
+
+
+class SchedulePayload(BaseModel):
+    scheduled_for: datetime
+
+    @field_validator("scheduled_for")
+    @classmethod
+    def _require_timezone(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("scheduled_for must include timezone information.")
+        return value
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 FRONTEND_DIST = ROOT_DIR / "frontend" / "dist"
@@ -55,6 +67,10 @@ def create_app() -> FastAPI:
     async def startup() -> None:  # pragma: no cover - FastAPI hook
         await manager.startup()
 
+    @app.on_event("shutdown")
+    async def shutdown() -> None:  # pragma: no cover - FastAPI hook
+        await manager.shutdown()
+
     def get_ctx() -> tuple[TaskManager, Settings]:
         return app.state.manager, app.state.settings
 
@@ -74,6 +90,8 @@ def create_app() -> FastAPI:
             "openaiBaseUrl": config.openai_base_url,
             "leaveBrowserOpen": False,
             "reasoningEffortOptions": ["low", "medium", "high"],
+            "schedulingEnabled": True,
+            "scheduleCheckSeconds": config.schedule_check_interval_seconds,
         }
 
     @app.get("/api/tasks")
@@ -97,7 +115,10 @@ def create_app() -> FastAPI:
         manager, settings = ctx
         if payload.model not in app.state.supported_models:
             raise HTTPException(status_code=400, detail="Unsupported model requested.")
-        detail = await manager.create_task(payload)
+        try:
+            detail = await manager.create_task(payload)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
         return serialize_detail(detail)
 
     @app.get("/api/tasks/{task_id}")
@@ -135,6 +156,33 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=409, detail=str(exc))
         if not detail:
             raise HTTPException(status_code=404, detail="Task not found")
+        return serialize_detail(detail)
+
+    @app.post("/api/tasks/{task_id}/run-now")
+    async def run_scheduled_now(task_id: str, ctx: tuple[TaskManager, Settings] = Depends(get_ctx)):
+        manager, _ = ctx
+        if not manager.get_task(task_id):
+            raise HTTPException(status_code=404, detail="Task not found")
+        detail = await manager.run_scheduled_now(task_id)
+        if not detail:
+            raise HTTPException(status_code=409, detail="Task is not scheduled or already starting.")
+        return serialize_detail(detail)
+
+    @app.post("/api/tasks/{task_id}/schedule")
+    async def reschedule_task(
+        task_id: str,
+        payload: SchedulePayload = Body(...),
+        ctx: tuple[TaskManager, Settings] = Depends(get_ctx),
+    ):
+        manager, _ = ctx
+        if not manager.get_task(task_id):
+            raise HTTPException(status_code=404, detail="Task not found")
+        try:
+            detail = await manager.reschedule_task(task_id, payload.scheduled_for)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        if not detail:
+            raise HTTPException(status_code=409, detail="Task is not scheduled.")
         return serialize_detail(detail)
 
     @app.post("/api/tasks/{task_id}/close-browser")

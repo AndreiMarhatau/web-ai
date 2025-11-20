@@ -4,6 +4,9 @@ export function statusTone(status: TaskStatus, needsAttention?: boolean): 'defau
   if (status === 'completed') {
     return 'success'
   }
+  if (status === 'scheduled') {
+    return 'warning'
+  }
   if (status === 'failed') {
     return 'error'
   }

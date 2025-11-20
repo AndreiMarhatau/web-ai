@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Optional, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 def utcnow() -> datetime:
@@ -13,6 +13,7 @@ def utcnow() -> datetime:
 
 class TaskStatus(str, Enum):
     pending = "pending"
+    scheduled = "scheduled"
     running = "running"
     waiting_for_input = "waiting_for_input"
     completed = "completed"
@@ -61,6 +62,7 @@ class TaskRecord(BaseModel):
     keepalive_requested: bool = False
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
+    scheduled_for: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     last_error: Optional[str] = None
     result_summary: Optional[str] = None
@@ -95,6 +97,14 @@ class TaskCreatePayload(BaseModel):
     max_steps: int = Field(default=80, ge=1, le=200)
     leave_browser_open: bool = False
     reasoning_effort: Optional[Literal["low", "medium", "high"]] = None
+    scheduled_for: Optional[datetime] = None
+
+    @field_validator("scheduled_for")
+    @classmethod
+    def _require_timezone(cls, value: Optional[datetime]) -> Optional[datetime]:
+        if value is not None and value.tzinfo is None:
+            raise ValueError("scheduled_for must include timezone information.")
+        return value
 
 
 class TaskSummary(BaseModel):
@@ -106,6 +116,7 @@ class TaskSummary(BaseModel):
     needs_attention: bool
     created_at: datetime
     updated_at: datetime
+    scheduled_for: Optional[datetime] = None
     step_count: int
     model_name: str
 

@@ -13,6 +13,8 @@ const initialFormState = {
   reasoningEffort: '',
   maxSteps: 80,
   leaveBrowserOpen: false,
+  scheduleEnabled: false,
+  scheduledFor: '',
 }
 
 function CreateTaskPage() {
@@ -59,6 +61,10 @@ function CreateTaskPage() {
       alert('Title and instructions are required.')
       return
     }
+    if (form.scheduleEnabled && !form.scheduledFor) {
+      alert('Choose when the task should start.')
+      return
+    }
     setSubmitting(true)
     try {
       const payload: Record<string, unknown> = {
@@ -70,6 +76,16 @@ function CreateTaskPage() {
       }
       if (form.reasoningEffort) {
         payload.reasoning_effort = form.reasoningEffort
+      }
+      if (form.scheduleEnabled && form.scheduledFor) {
+        const parsed = new Date(form.scheduledFor)
+        if (Number.isNaN(parsed.getTime())) {
+          throw new Error('Invalid scheduled time.')
+        }
+        if (parsed.getTime() <= Date.now()) {
+          throw new Error('Scheduled time must be in the future.')
+        }
+        payload.scheduled_for = parsed.toISOString()
       }
       const detail = await api<TaskDetail>('/api/tasks', {
         method: 'POST',
@@ -116,6 +132,27 @@ function CreateTaskPage() {
             multiline
             minRows={4}
           />
+          <Stack spacing={1}>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={form.scheduleEnabled}
+                  onChange={(event) => handleChange({ scheduleEnabled: event.target.checked })}
+                />
+              }
+              label="Schedule start time"
+            />
+            {form.scheduleEnabled && (
+              <TextField
+                type="datetime-local"
+                label="Start time"
+                value={form.scheduledFor}
+                onChange={(event) => handleChange({ scheduledFor: event.target.value })}
+                fullWidth
+                required
+              />
+            )}
+          </Stack>
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
             <TextField
               select
