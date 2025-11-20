@@ -4,7 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, List
 
-from pydantic import BaseModel, Field, HttpUrl, field_validator
+from pydantic import BaseModel, Field, HttpUrl, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -24,7 +24,11 @@ class HeadSettings(BaseSettings):
 
     app_host: str = Field(default="0.0.0.0", validation_alias="HEAD_HOST")
     app_port: int = Field(default=7790, validation_alias="HEAD_PORT")
-    nodes: List[HeadNode] = Field(default_factory=list, validation_alias="HEAD_NODES")
+    nodes_raw: str | list[str] | list[dict[str, str]] | None = Field(
+        default=None,
+        validation_alias="HEAD_NODES",
+    )
+    nodes: List[HeadNode] = Field(default_factory=list, exclude=True)
 
     key_dir: Path = Field(default=Path("./data/head"), validation_alias="HEAD_KEY_DIR")
     private_key_path: Path = Field(
@@ -38,12 +42,12 @@ class HeadSettings(BaseSettings):
     token_ttl_seconds: int = Field(default=120, validation_alias="HEAD_TOKEN_TTL")
     token_audience: str = Field(default="node", validation_alias="HEAD_TOKEN_AUDIENCE")
 
-    @field_validator("nodes", mode="before")
-    @classmethod
-    def _parse_nodes(cls, value):
+    @model_validator(mode="after")
+    def _parse_nodes(self):
+        value = self.nodes_raw
         if not value:
-            return []
-        # Accept a comma-separated string of entries like "http://node:8001|name"
+            self.nodes = []
+            return self
         if isinstance(value, str):
             entries = [item.strip() for item in value.split(",") if item.strip()]
         else:
@@ -67,7 +71,9 @@ class HeadSettings(BaseSettings):
             name = parts[1] if len(parts) > 1 else f"node-{idx}"
             node_id = name if name else f"node-{idx}"
             parsed.append(HeadNode(id=node_id, name=name or node_id, url=url))
-        return parsed
+
+        self.nodes = parsed
+        return self
 
     def ensure_paths(self) -> None:
         self.key_dir.mkdir(parents=True, exist_ok=True)

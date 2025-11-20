@@ -4,7 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal, Optional
 
-from pydantic import AliasChoices, Field, field_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -87,8 +87,8 @@ class Settings(BaseSettings):
     # Node identity / auth
     node_id: str = Field(default="default", validation_alias="WEB_AI_NODE_ID")
     node_name: str | None = Field(default=None, validation_alias="WEB_AI_NODE_NAME")
-    head_public_keys: list[str] = Field(
-        default_factory=list,
+    head_public_keys: str | list[str] | None = Field(
+        default=None,
         validation_alias=AliasChoices("WEB_AI_HEAD_PUBLIC_KEYS", "HEAD_PUBLIC_KEYS"),
     )
     head_auth_required: bool = Field(
@@ -106,6 +106,16 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             return [item.strip() for item in value.split(",") if item.strip()]
         return value
+
+    @model_validator(mode="after")
+    def _normalize_keys(self):
+        # Ensure head_public_keys is always a list
+        keys = self.head_public_keys
+        if keys is None:
+            self.head_public_keys = []
+        elif isinstance(keys, str):
+            self.head_public_keys = [k.strip() for k in keys.split(",") if k.strip()]
+        return self
 
     def ensure_directories(self) -> None:
         """Create known directories up-front so later file writes never fail."""
