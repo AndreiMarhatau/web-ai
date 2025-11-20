@@ -76,6 +76,7 @@ export interface NodeInfo {
   ready?: boolean
   issues?: string[]
   reachable?: boolean
+  enrollment?: boolean
 }
 
 export interface NodesResponse {
