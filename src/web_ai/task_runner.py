@@ -213,18 +213,21 @@ class TaskManager:
             await self.vnc_manager.register_existing(
                 persisted.record.id, persisted.record.vnc_token
             )
+            needs_save = False
+            original_schedule = persisted.record.scheduled_for
             try:
-                persisted.record.scheduled_for = _normalize_datetime(
-                    persisted.record.scheduled_for
-                )
+                normalized = _normalize_datetime(persisted.record.scheduled_for)
+                if normalized != original_schedule:
+                    persisted.record.scheduled_for = normalized
+                    needs_save = True
             except ValueError:
                 logger.warning(
                     "Task %s has naive scheduled_for; clearing schedule on startup",
                     persisted.record.id,
                 )
                 persisted.record.scheduled_for = None
+                needs_save = True
             # Tasks that were running before a restart are now stopped
-            needs_save = False
             if persisted.record.browser_open:
                 persisted.record.browser_open = False
                 needs_save = True
@@ -507,7 +510,10 @@ class TaskManager:
         runtime = self.get_task(task_id)
         if not runtime or runtime.record.status != TaskStatus.scheduled:
             return None
-        await self._enqueue_run(runtime, clear_schedule=True)
+        try:
+            await self._enqueue_run(runtime, clear_schedule=True)
+        except RuntimeError:
+            return None
         return self.get_task_detail(task_id)
 
     async def reschedule_task(self, task_id: str, scheduled_for: datetime) -> TaskDetail | None:

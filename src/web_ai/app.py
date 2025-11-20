@@ -165,7 +165,7 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail="Task not found")
         detail = await manager.run_scheduled_now(task_id)
         if not detail:
-            raise HTTPException(status_code=409, detail="Task is not scheduled.")
+            raise HTTPException(status_code=409, detail="Task is not scheduled or already starting.")
         return serialize_detail(detail)
 
     @app.post("/api/tasks/{task_id}/schedule")

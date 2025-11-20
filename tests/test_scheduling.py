@@ -172,6 +172,39 @@ async def test_rejects_naive_schedule_times(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_run_now_conflict_returns_none(tmp_path, monkeypatch):
+    settings = Settings(
+        base_data_dir=tmp_path,
+        openai_api_key="test-key",
+        openai_model="gpt-5",
+        schedule_check_interval_seconds=0.05,
+    )
+    settings.base_data_dir = tmp_path
+    settings.ensure_directories()
+    manager = TaskManager(settings)
+    await manager.startup()
+
+    payload = TaskCreatePayload(
+        title="Conflict",
+        instructions="Some instructions",
+        model=settings.openai_model,
+        max_steps=settings.max_steps,
+        leave_browser_open=False,
+        scheduled_for=utcnow() + timedelta(minutes=5),
+    )
+    detail = await manager.create_task(payload)
+
+    async def raise_conflict(*args, **kwargs):
+        raise RuntimeError("already running")
+
+    monkeypatch.setattr(manager, "_enqueue_run", raise_conflict)
+
+    result = await manager.run_scheduled_now(detail.record.id)
+    assert result is None
+    await manager.shutdown()
+
+
+@pytest.mark.asyncio
 async def test_deleted_scheduled_task_is_not_started(tmp_path, monkeypatch):
     monkeypatch.delenv("WEB_AI_BASE_DATA_DIR", raising=False)
     monkeypatch.delenv("BASE_DATA_DIR", raising=False)
