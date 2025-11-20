@@ -347,6 +347,9 @@ class TaskManager:
         """Dispatch a runtime to run on the agent loop."""
         if runtime.asyncio_task and not runtime.asyncio_task.done():
             raise RuntimeError("Task is already running.")
+        async with self._lock:
+            if self._tasks.get(runtime.record.id) is not runtime:
+                return
         runtime.record.status = TaskStatus.pending
         if clear_schedule:
             runtime.record.scheduled_for = None
@@ -432,14 +435,22 @@ class TaskManager:
     async def _start_due_scheduled_tasks(self) -> None:
         """Start any scheduled tasks whose start time has arrived."""
         now = utcnow()
-        for runtime in list(self._tasks.values()):
+        async with self._lock:
+            snapshot = list(self._tasks.items())
+
+        for task_id, runtime in snapshot:
             record = runtime.record
             if record.status != TaskStatus.scheduled:
                 continue
             if not record.scheduled_for:
                 continue
-            if record.scheduled_for <= now:
-                await self._enqueue_run(runtime, clear_schedule=True)
+            if record.scheduled_for > now:
+                continue
+            async with self._lock:
+                current = self._tasks.get(task_id)
+            if current is not runtime:
+                continue
+            await self._enqueue_run(runtime, clear_schedule=True)
 
     async def continue_task(self, task_id: str, instructions: str) -> TaskDetail | None:
         runtime = self.get_task(task_id)

@@ -141,3 +141,43 @@ async def test_scheduler_survives_iteration_error(tmp_path, monkeypatch):
         assert call_count >= 2
     finally:
         await manager.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_deleted_scheduled_task_is_not_started(tmp_path, monkeypatch):
+    monkeypatch.delenv("WEB_AI_BASE_DATA_DIR", raising=False)
+    monkeypatch.delenv("BASE_DATA_DIR", raising=False)
+    settings = Settings(
+        base_data_dir=tmp_path,
+        openai_api_key="test-key",
+        openai_model="gpt-5",
+        schedule_check_interval_seconds=0.01,
+    )
+    settings.base_data_dir = tmp_path
+    settings.ensure_directories()
+    manager = TaskManager(settings)
+    await manager.startup()
+
+    started = asyncio.Event()
+
+    async def fake_run(runtime):
+        started.set()
+
+    monkeypatch.setattr(manager, "_run_task", fake_run)
+
+    payload = TaskCreatePayload(
+        title="Do not start",
+        instructions="Should never run",
+        model=settings.openai_model,
+        max_steps=settings.max_steps,
+        leave_browser_open=False,
+        scheduled_for=utcnow() + timedelta(seconds=0.05),
+    )
+
+    detail = await manager.create_task(payload)
+    await manager.delete_task(detail.record.id)
+
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(started.wait(), timeout=0.2)
+
+    await manager.shutdown()
