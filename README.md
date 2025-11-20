@@ -51,12 +51,14 @@ docker compose up -d --build
 Compose notes:
 - The head generates its keypair; nodes verify requests with the head public key. With the default auth-enabled setup, ensure the head writes `head_public.pem` to the shared `head_keys` volume before making authenticated calls. Nodes will reload trusted keys on demand, but secured APIs return 503 until the key exists.
 - For quick local bring-up without the head key, set `WEB_AI_NODE_REQUIRE_AUTH=false` on the node.
-- Sample `.env.head` (create this file or set env vars):
+- Sample `.env.head` (create this file or set env vars) — see `.env.head.example`:
 
 ```
 HEAD_NODES=http://node:8001|default
 HEAD_PORT=7790
 ```
+
+- Sample `.env` for nodes (see `.env.node.example`): set `WEB_AI_OPENAI_API_KEY`, `WEB_AI_HEAD_PUBLIC_KEYS` (path or PEM), and `WEB_AI_NODE_ID`.
 
 ## Development
 

@@ -35,7 +35,7 @@ services:
       - "${VNC_TCP_PORT:-5902}:5902"
       - "9223:9223"
     env_file:
-      - .env
+      - .env.node
     environment:
       WEB_AI_PORT: ${WEB_AI_PORT:-8001}
       WEB_AI_HOST: 0.0.0.0
