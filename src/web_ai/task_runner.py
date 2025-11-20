@@ -442,12 +442,18 @@ class TaskManager:
             record = runtime.record
             if record.status != TaskStatus.scheduled:
                 continue
-            if not record.scheduled_for:
-                continue
-            if record.scheduled_for > now:
-                continue
             async with self._lock:
                 current = self._tasks.get(task_id)
+                current_schedule = (
+                    _normalize_datetime(current.record.scheduled_for)
+                    if current
+                    else None
+                )
+                if not current or current is not runtime:
+                    continue
+                if not current_schedule or current_schedule > now:
+                    continue
+                current.record.scheduled_for = current_schedule
             if current is not runtime:
                 continue
             await self._enqueue_run(runtime, clear_schedule=True)
