@@ -61,9 +61,9 @@ RUN mkdir -p /etc/apt/keyrings \
 WORKDIR /app/web-ai
 
 # Install uv for dependency management
+ARG UV_VERSION=0.4.29
 ENV UV_LINK_MODE=copy
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-ENV PATH="/root/.local/bin:${PATH}"
+RUN pip install --no-cache-dir "uv==${UV_VERSION}"
 
 # Copy dependency metadata and Python sources, then install production dependencies
 COPY pyproject.toml uv.lock README.md webai.py ./
