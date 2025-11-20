@@ -20,14 +20,16 @@ cd frontend
 npm install
 npm run build
 cd ..
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+
+# install uv if you don't have it yet: https://docs.astral.sh/uv/getting-started/installation/
+uv sync --all-groups
 export PYTHONPATH=$(pwd)/src
-python webai.py
+uv run python webai.py
 ```
 
 Access the UI at `http://localhost:7790` (configurable via `WEB_AI_PORT`).
+
+`uv sync --all-groups` installs backend dev dependencies too, so you can run backend tests with `uv run pytest`.
 
 - Supported OpenAI models exposed in the UI: `gpt-5`, `gpt-5-mini`, `gpt-5-nano`.
 - Reasoning effort options: `low`, `medium`, `high`, or automatic (unset).

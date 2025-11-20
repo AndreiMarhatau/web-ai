@@ -58,22 +58,30 @@ RUN mkdir -p /etc/apt/keyrings \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
+WORKDIR /app/web-ai
 
-# Copy requirements and install dependencies
-COPY requirements.txt /tmp/web-ai/requirements.txt
-RUN pip install --no-cache-dir -r /tmp/web-ai/requirements.txt
+# Install uv for dependency management
+ENV UV_LINK_MODE=copy
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:${PATH}"
+
+# Copy dependency metadata and Python sources, then install production dependencies
+COPY pyproject.toml uv.lock README.md webai.py ./
+COPY src ./src
+RUN uv sync --frozen --no-dev
+
+ENV VIRTUAL_ENV=/app/web-ai/.venv
+ENV PATH="/app/web-ai/.venv/bin:${PATH}"
+ENV PYTHONPATH=/app/web-ai/src
 
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-browsers
 RUN mkdir -p $PLAYWRIGHT_BROWSERS_PATH
 RUN PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=0 playwright install chromium
 
-ENV PYTHONPATH=/app/web-ai/src
-
 # Copy application code
-COPY . /app/web-ai
+COPY . .
 
-RUN cd /app/web-ai/frontend && npm install && npm run build
+RUN cd frontend && npm install && npm run build
 
 RUN mkdir -p /var/log/supervisor
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
