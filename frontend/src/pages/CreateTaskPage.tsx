@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useNavigate, Link as RouterLink } from 'react-router-dom'
-import { Paper, Stack, Typography, TextField, Button, FormControlLabel, Switch, MenuItem, Skeleton, Chip } from '@mui/material'
+import { Paper, Stack, Typography, TextField, Button, FormControlLabel, Switch, MenuItem, Skeleton, Chip, Alert } from '@mui/material'
 import { api } from '../api'
 import type { ConfigDefaults, NodeInfo, NodesResponse, TaskDetail } from '../types'
 import { useApiStatus } from '../contexts/apiStatus'
@@ -23,6 +23,7 @@ function CreateTaskPage() {
   const [defaults, setDefaults] = useState<ConfigDefaults | null>(null)
   const [nodes, setNodes] = useState<NodeInfo[]>([])
   const [headPublicKey, setHeadPublicKey] = useState('')
+  const [enrollToken, setEnrollToken] = useState('')
   const [form, setForm] = useState(initialFormState)
   const [loadingDefaults, setLoadingDefaults] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -58,6 +59,7 @@ function CreateTaskPage() {
       const data = await api<NodesResponse>('/api/nodes')
       setNodes(data.nodes)
       setHeadPublicKey(data.public_key)
+      setEnrollToken(data.enroll_token || '')
       if (data.nodes.length === 1) {
         setForm((current) => ({ ...current, nodeId: data.nodes[0].id }))
       }
@@ -275,6 +277,11 @@ function CreateTaskPage() {
               InputProps={{ readOnly: true }}
               helperText="Provide this to nodes so they can verify requests from the head."
             />
+          )}
+          {enrollToken && (
+            <Alert severity="info">
+              Enrollment token available: nodes can accept the head key via the head UI without manual copy.
+            </Alert>
           )}
         </Stack>
       )}

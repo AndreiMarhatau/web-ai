@@ -69,6 +69,15 @@ def create_head_app() -> FastAPI:
             payload["vnc_launch_url"] = f"{node.url}{url}"
         return payload
 
+    @app.post("/api/nodes/{node_id}/install-head-key")
+    async def install_head_key(node_id: str):
+        node = get_node(node_id)
+        if not settings.enroll_token:
+            raise HTTPException(status_code=400, detail="Enrollment token not configured")
+        payload = {"public_key": public_key_pem, "token": settings.enroll_token}
+        resp = await call_node(node, "POST", "/api/admin/head-key", json=payload)
+        return resp.json()
+
     @app.get("/healthz")
     async def healthcheck():
         return {"status": "ok"}
@@ -88,14 +97,17 @@ def create_head_app() -> FastAPI:
                 node_data["ready"] = info.get("ready", False)
                 node_data["issues"] = info.get("issues", [])
                 node_data["reachable"] = True
+                node_data["enrollment"] = info.get("enrollment", False)
             except HTTPException as exc:
                 node_data["ready"] = False
                 node_data["issues"] = [exc.detail if isinstance(exc.detail, str) else str(exc.detail)]
                 node_data["reachable"] = False
+                node_data["enrollment"] = False
             enriched.append(node_data)
         return {
             "nodes": enriched,
             "public_key": public_key_pem,
+            "enroll_token": settings.enroll_token,
         }
 
     @app.get("/api/config/defaults")

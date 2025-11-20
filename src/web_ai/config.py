@@ -97,6 +97,7 @@ class Settings(BaseSettings):
     )
     head_jwt_algorithm: str = Field(default="EdDSA", validation_alias="WEB_AI_NODE_JWT_ALG")
     head_token_audience: str = Field(default="node", validation_alias="WEB_AI_NODE_AUDIENCE")
+    enroll_token: str | None = Field(default=None, validation_alias="WEB_AI_NODE_ENROLL_TOKEN")
 
     @field_validator("head_public_keys", mode="before")
     @classmethod

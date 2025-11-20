@@ -13,6 +13,7 @@ from .config import Settings, get_settings
 from .models import TaskCreatePayload
 from .task_runner import TaskManager, _safe_model_dump
 from .security import TokenVerifier, load_public_keys
+from .storage import TaskStorage
 
 BASE_MODELS = [
     "gpt-5",
@@ -79,6 +80,7 @@ def create_app() -> FastAPI:
     app.state.manager = manager
     app.state.supported_models = supported_models
     app.state.verifier = verifier
+    app.state.enroll_token = settings.enroll_token
 
     @app.on_event("startup")
     async def startup() -> None:  # pragma: no cover - FastAPI hook
@@ -121,6 +123,25 @@ def create_app() -> FastAPI:
             issues.append("openai_key_missing")
         return {"status": "ok", "ready": ready, "issues": issues}
 
+    @app.post("/api/admin/head-key")
+    async def install_head_key(payload: dict = Body(...)):
+        token = payload.get("token")
+        pem = payload.get("public_key") or payload.get("publicKey")
+        if settings.enroll_token:
+            if token != settings.enroll_token:
+                raise HTTPException(status_code=401, detail="Invalid enroll token")
+        else:
+            raise HTTPException(status_code=403, detail="Enrollment disabled")
+        if not pem or not isinstance(pem, str):
+            raise HTTPException(status_code=400, detail="public_key is required")
+        try:
+            keys = load_public_keys([pem])
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid public key")
+        settings.head_public_keys = [pem]
+        app.state.verifier = _reload_verifier()
+        return {"status": "ok", "trusted_keys": len(keys)}
+
     # Health endpoint for unauthenticated checks
     @app.get("/healthz")
     async def healthcheck():
@@ -134,6 +155,7 @@ def create_app() -> FastAPI:
             "name": settings.node_name,
             "ready": status["ready"],
             "issues": status["issues"],
+            "enrollment": bool(settings.enroll_token),
         }
 
     @app.get("/api/config/defaults")

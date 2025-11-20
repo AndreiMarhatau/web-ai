@@ -41,6 +41,7 @@ class HeadSettings(BaseSettings):
     )
     token_ttl_seconds: int = Field(default=120, validation_alias="HEAD_TOKEN_TTL")
     token_audience: str = Field(default="node", validation_alias="HEAD_TOKEN_AUDIENCE")
+    enroll_token: str | None = Field(default=None, validation_alias="HEAD_ENROLL_TOKEN")
 
     @model_validator(mode="after")
     def _parse_nodes(self):

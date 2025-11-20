@@ -81,6 +81,7 @@ export interface NodeInfo {
 export interface NodesResponse {
   nodes: NodeInfo[]
   public_key: string
+  enroll_token?: string | null
 }
 
 export interface TaskListError {
