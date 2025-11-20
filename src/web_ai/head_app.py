@@ -47,12 +47,19 @@ def create_head_app() -> FastAPI:
                 return settings.nodes[0]
         raise HTTPException(status_code=400, detail="node_id is required when multiple nodes are configured")
 
+    def _node_url(node: HeadNode, path: str) -> str:
+        base = str(node.url).rstrip("/")
+        if not path.startswith("/"):
+            path = "/" + path
+        return f"{base}{path}"
+
     async def call_node(node: HeadNode, method: str, path: str, **kwargs) -> httpx.Response:
         token = signer.sign_for_node(node_id=node.id)
         headers = kwargs.pop("headers", {}) or {}
         headers["Authorization"] = f"Bearer {token}"
+        url = _node_url(node, path)
         try:
-            response = await http_client.request(method, f"{node.url}{path}", headers=headers, **kwargs)
+            response = await http_client.request(method, url, headers=headers, **kwargs)
         except httpx.RequestError as exc:
             raise HTTPException(status_code=503, detail=str(exc))
         if response.status_code >= 400:
