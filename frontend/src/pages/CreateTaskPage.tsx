@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useNavigate, Link as RouterLink } from 'react-router-dom'
-import { Paper, Stack, Typography, TextField, Button, FormControlLabel, Switch, MenuItem, Skeleton } from '@mui/material'
+import { Paper, Stack, Typography, TextField, Button, FormControlLabel, Switch, MenuItem, Skeleton, Chip } from '@mui/material'
 import { api } from '../api'
-import type { ConfigDefaults, TaskDetail } from '../types'
+import type { ConfigDefaults, NodeInfo, NodesResponse, TaskDetail } from '../types'
 import { useApiStatus } from '../contexts/apiStatus'
 
 const initialFormState = {
@@ -15,11 +15,14 @@ const initialFormState = {
   leaveBrowserOpen: false,
   scheduleEnabled: false,
   scheduledFor: '',
+  nodeId: '',
 }
 
 function CreateTaskPage() {
   const { setStatus } = useApiStatus()
   const [defaults, setDefaults] = useState<ConfigDefaults | null>(null)
+  const [nodes, setNodes] = useState<NodeInfo[]>([])
+  const [headPublicKey, setHeadPublicKey] = useState('')
   const [form, setForm] = useState(initialFormState)
   const [loadingDefaults, setLoadingDefaults] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -36,6 +39,7 @@ function CreateTaskPage() {
         maxSteps: data.max_steps,
         leaveBrowserOpen: data.leaveBrowserOpen,
         reasoningEffort: '',
+        nodeId: data.nodeId || current.nodeId,
       }))
       setStatus('Ready', 'success')
     } catch (err) {
@@ -48,6 +52,23 @@ function CreateTaskPage() {
   useEffect(() => {
     loadDefaults()
   }, [loadDefaults])
+
+  const loadNodes = useCallback(async () => {
+    try {
+      const data = await api<NodesResponse>('/api/nodes')
+      setNodes(data.nodes)
+      setHeadPublicKey(data.public_key)
+      if (data.nodes.length === 1) {
+        setForm((current) => ({ ...current, nodeId: data.nodes[0].id }))
+      }
+    } catch (err) {
+      setStatus((err as Error).message, 'danger')
+    }
+  }, [setStatus])
+
+  useEffect(() => {
+    loadNodes()
+  }, [loadNodes])
 
   const handleChange = (field: Partial<typeof form>) => {
     setForm((current) => ({ ...current, ...field }))
@@ -65,6 +86,10 @@ function CreateTaskPage() {
       alert('Choose when the task should start.')
       return
     }
+    if (nodes.length > 1 && !form.nodeId) {
+      alert('Select a node to run on.')
+      return
+    }
     setSubmitting(true)
     try {
       const payload: Record<string, unknown> = {
@@ -73,6 +98,9 @@ function CreateTaskPage() {
         model: form.model,
         max_steps: form.maxSteps,
         leave_browser_open: form.leaveBrowserOpen,
+      }
+      if (form.nodeId) {
+        payload.node_id = form.nodeId
       }
       if (form.reasoningEffort) {
         payload.reasoning_effort = form.reasoningEffort
@@ -92,7 +120,7 @@ function CreateTaskPage() {
         body: JSON.stringify(payload),
       })
       setStatus('Task launched', 'success')
-      navigate(`/tasks/${detail.record.id}`)
+      navigate(`/tasks/${detail.record.id}?node=${detail.record.node_id || form.nodeId || nodes[0]?.id || ''}`)
     } catch (err) {
       const message = (err as Error).message
       setStatus(message, 'danger')
@@ -153,6 +181,32 @@ function CreateTaskPage() {
               />
             )}
           </Stack>
+          {nodes.length > 1 && (
+            <TextField
+              select
+              label="Node"
+              name="node"
+              value={form.nodeId}
+              onChange={(event) => handleChange({ nodeId: event.target.value })}
+              fullWidth
+              required
+              helperText="Choose where the task should run"
+            >
+              {nodes.map((node) => (
+                <MenuItem key={node.id} value={node.id}>
+                  {node.name || node.id}
+                </MenuItem>
+              ))}
+            </TextField>
+          )}
+          {nodes.length === 1 && (
+            <Stack direction="row" spacing={1} alignItems="center">
+              <Chip label={`Node: ${nodes[0].name || nodes[0].id}`} size="small" />
+              <Typography variant="body2" color="text.secondary">
+                Tasks will run on this node.
+              </Typography>
+            </Stack>
+          )}
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
             <TextField
               select
@@ -211,6 +265,17 @@ function CreateTaskPage() {
               Back to tasks
             </Button>
           </Stack>
+          {headPublicKey && (
+            <TextField
+              label="Head public key"
+              value={headPublicKey}
+              multiline
+              minRows={3}
+              fullWidth
+              InputProps={{ readOnly: true }}
+              helperText="Provide this to nodes so they can verify requests from the head."
+            />
+          )}
         </Stack>
       )}
     </Paper>

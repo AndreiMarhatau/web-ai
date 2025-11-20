@@ -53,6 +53,7 @@ class AssistanceRequest(BaseModel):
 
 
 class TaskRecord(BaseModel):
+    node_id: str = "default"
     id: str
     title: str
     instructions: str
@@ -108,6 +109,7 @@ class TaskCreatePayload(BaseModel):
 
 
 class TaskSummary(BaseModel):
+    node_id: str
     id: str
     title: str
     status: TaskStatus

@@ -253,6 +253,7 @@ class TaskManager:
             browser_open = self._sync_browser_state(runtime)
             summaries.append(
                 TaskSummary(
+                    node_id=record.node_id,
                     id=record.id,
                     title=record.title,
                     status=record.status,
@@ -315,6 +316,7 @@ class TaskManager:
             raise ValueError("Scheduled start time must be in the future.")
 
         record = TaskRecord(
+            node_id=self.settings.node_id,
             id=task_id,
             title=payload.title,
             instructions=payload.instructions,

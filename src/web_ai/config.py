@@ -4,7 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal, Optional
 
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -83,6 +83,29 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("WEB_AI_VNC_TOKEN_FILE", "VNC_TOKEN_FILE"),
     )
     vnc_scheme: Literal["http", "https"] = "http"
+
+    # Node identity / auth
+    node_id: str = Field(default="default", validation_alias="WEB_AI_NODE_ID")
+    node_name: str | None = Field(default=None, validation_alias="WEB_AI_NODE_NAME")
+    head_public_keys: list[str] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("WEB_AI_HEAD_PUBLIC_KEYS", "HEAD_PUBLIC_KEYS"),
+    )
+    head_auth_required: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("WEB_AI_NODE_REQUIRE_AUTH", "NODE_REQUIRE_AUTH"),
+    )
+    head_jwt_algorithm: str = Field(default="EdDSA", validation_alias="WEB_AI_NODE_JWT_ALG")
+    head_token_audience: str = Field(default="node", validation_alias="WEB_AI_NODE_AUDIENCE")
+
+    @field_validator("head_public_keys", mode="before")
+    @classmethod
+    def _split_keys(cls, value):
+        if not value:
+            return []
+        if isinstance(value, str):
+            return [item.strip() for item in value.split(",") if item.strip()]
+        return value
 
     def ensure_directories(self) -> None:
         """Create known directories up-front so later file writes never fail."""
