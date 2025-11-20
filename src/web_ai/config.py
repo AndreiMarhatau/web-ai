@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     openai_base_url: str | None = Field(default=None, validation_alias="OPENAI_ENDPOINT")
 
     # Browser + storage
-    base_data_dir: Path = Field(default=Path("./data"), validation_alias="BASE_DATA_DIR")
+    base_data_dir: Path = Field(default=Path("/app/data"), validation_alias="BASE_DATA_DIR")
     tasks_dir_name: str = "tasks"
     browser_width: int = 1400
     browser_height: int = 1100

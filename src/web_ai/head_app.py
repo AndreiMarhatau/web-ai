@@ -73,7 +73,9 @@ def create_head_app() -> FastAPI:
     def _attach_vnc_host(node: HeadNode, payload: dict[str, Any]) -> dict[str, Any]:
         url = payload.get("vnc_launch_url")
         if url:
-            payload["vnc_launch_url"] = f"{node.url}{url}"
+            base = str(node.url).rstrip("/")
+            path = url if url.startswith("/") else f"/{url}"
+            payload["vnc_launch_url"] = f"{base}{path}"
         return payload
 
     @app.post("/api/nodes/{node_id}/install-head-key")
