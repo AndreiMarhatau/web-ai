@@ -1,9 +1,10 @@
 import asyncio
 import sys
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.append(str(ROOT_DIR / "src"))
@@ -141,6 +142,33 @@ async def test_scheduler_survives_iteration_error(tmp_path, monkeypatch):
         assert call_count >= 2
     finally:
         await manager.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_rejects_naive_schedule_times(tmp_path):
+    settings = Settings(
+        base_data_dir=tmp_path,
+        openai_api_key="test-key",
+        openai_model="gpt-5",
+        schedule_check_interval_seconds=0.05,
+    )
+    settings.base_data_dir = tmp_path
+    settings.ensure_directories()
+    manager = TaskManager(settings)
+    await manager.startup()
+
+    naive_time = datetime.now()
+    with pytest.raises(ValidationError):
+        TaskCreatePayload(
+            title="Naive schedule",
+            instructions="Should fail",
+            model=settings.openai_model,
+            max_steps=settings.max_steps,
+            leave_browser_open=False,
+            scheduled_for=naive_time,
+        )
+
+    await manager.shutdown()
 
 
 @pytest.mark.asyncio

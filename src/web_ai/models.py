@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Optional, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 def utcnow() -> datetime:
@@ -98,6 +98,13 @@ class TaskCreatePayload(BaseModel):
     leave_browser_open: bool = False
     reasoning_effort: Optional[Literal["low", "medium", "high"]] = None
     scheduled_for: Optional[datetime] = None
+
+    @field_validator("scheduled_for")
+    @classmethod
+    def _require_timezone(cls, value: Optional[datetime]) -> Optional[datetime]:
+        if value is not None and value.tzinfo is None:
+            raise ValueError("scheduled_for must include timezone information.")
+        return value
 
 
 class TaskSummary(BaseModel):

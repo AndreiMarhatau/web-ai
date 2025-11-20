@@ -65,7 +65,7 @@ def _normalize_datetime(value: datetime | None) -> datetime | None:
     if value is None:
         return None
     if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
+        raise ValueError("Timezone-aware datetime is required.")
     return value.astimezone(timezone.utc)
 
 
@@ -213,7 +213,16 @@ class TaskManager:
             await self.vnc_manager.register_existing(
                 persisted.record.id, persisted.record.vnc_token
             )
-            persisted.record.scheduled_for = _normalize_datetime(persisted.record.scheduled_for)
+            try:
+                persisted.record.scheduled_for = _normalize_datetime(
+                    persisted.record.scheduled_for
+                )
+            except ValueError:
+                logger.warning(
+                    "Task %s has naive scheduled_for; clearing schedule on startup",
+                    persisted.record.id,
+                )
+                persisted.record.scheduled_for = None
             # Tasks that were running before a restart are now stopped
             needs_save = False
             if persisted.record.browser_open:
@@ -444,12 +453,15 @@ class TaskManager:
                 continue
             async with self._lock:
                 current = self._tasks.get(task_id)
-                current_schedule = (
-                    _normalize_datetime(current.record.scheduled_for)
-                    if current
-                    else None
-                )
                 if not current or current is not runtime:
+                    continue
+                try:
+                    current_schedule = _normalize_datetime(current.record.scheduled_for)
+                except ValueError:
+                    logger.warning(
+                        "Scheduled task %s has naive datetime; skipping until corrected",
+                        task_id,
+                    )
                     continue
                 if not current_schedule or current_schedule > now:
                     continue

@@ -7,7 +7,7 @@ from datetime import datetime
 from fastapi import Body, Depends, FastAPI, HTTPException, Response
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from .config import Settings, get_settings
 from .models import TaskCreatePayload
@@ -30,6 +30,13 @@ class ContinuePayload(BaseModel):
 
 class SchedulePayload(BaseModel):
     scheduled_for: datetime
+
+    @field_validator("scheduled_for")
+    @classmethod
+    def _require_timezone(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("scheduled_for must include timezone information.")
+        return value
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 FRONTEND_DIST = ROOT_DIR / "frontend" / "dist"
