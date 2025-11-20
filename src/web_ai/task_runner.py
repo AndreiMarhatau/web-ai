@@ -772,13 +772,17 @@ class TaskManager:
     async def _scheduled_runner(self) -> None:
         try:
             while True:
-                await self._start_due_scheduled_tasks()
+                try:
+                    await self._start_due_scheduled_tasks()
+                except asyncio.CancelledError:
+                    logger.debug("Scheduled runner stopped")
+                    raise
+                except Exception:
+                    logger.exception("Scheduled runner iteration failed", exc_info=True)
                 await asyncio.sleep(self.settings.schedule_check_interval_seconds)
-        except asyncio.CancelledError:
-            logger.debug("Scheduled runner stopped")
-            raise
-        except Exception:
-            logger.exception("Scheduled runner crashed", exc_info=True)
+        finally:
+            # Allow the scheduler to be restarted if it ever exits.
+            self._scheduler_task = None
 
     async def shutdown(self) -> None:
         if self._scheduler_task:

@@ -107,3 +107,37 @@ async def test_reschedule_and_run_now(tmp_path, monkeypatch):
         assert manager.get_task(detail.record.id).record.scheduled_for is None
     finally:
         await manager.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_scheduler_survives_iteration_error(tmp_path, monkeypatch):
+    monkeypatch.delenv("WEB_AI_BASE_DATA_DIR", raising=False)
+    monkeypatch.delenv("BASE_DATA_DIR", raising=False)
+    settings = Settings(
+        base_data_dir=tmp_path,
+        openai_api_key="test-key",
+        openai_model="gpt-5",
+        schedule_check_interval_seconds=0.01,
+    )
+    settings.base_data_dir = tmp_path
+    settings.ensure_directories()
+    manager = TaskManager(settings)
+    call_count = 0
+    resumed = asyncio.Event()
+
+    async def flaky_start():
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise RuntimeError("boom")
+        resumed.set()
+
+    try:
+        await manager.startup()
+        monkeypatch.setattr(manager, "_start_due_scheduled_tasks", flaky_start)
+        runner = manager._scheduler_task
+        assert runner is not None
+        await asyncio.wait_for(resumed.wait(), timeout=2)
+        assert call_count >= 2
+    finally:
+        await manager.shutdown()
