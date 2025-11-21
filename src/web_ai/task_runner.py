@@ -210,10 +210,14 @@ class TaskManager:
         for persisted in await self.storage.load_all_async():
             runtime = TaskRuntime(data=persisted)
             self._tasks[persisted.record.id] = runtime
+            if not persisted.record.node_id or persisted.record.node_id == "default":
+                persisted.record.node_id = self.settings.node_id
+                needs_save = True
+            else:
+                needs_save = False
             await self.vnc_manager.register_existing(
                 persisted.record.id, persisted.record.vnc_token
             )
-            needs_save = False
             original_schedule = persisted.record.scheduled_for
             try:
                 normalized = _normalize_datetime(persisted.record.scheduled_for)

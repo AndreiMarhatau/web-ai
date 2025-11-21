@@ -47,7 +47,7 @@ services:
       NODE_NAME: default
       HEAD_PUBLIC_KEYS: /app/head-keys/head_public.pem
     volumes:
-      - node_data:/app/data
+      - node_data:/app/web-ai/data
       - head_keys:/app/head-keys:ro
     restart: unless-stopped
     shm_size: "2g"
