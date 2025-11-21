@@ -25,20 +25,20 @@ class Settings(BaseSettings):
 
     # OpenAI-only agent defaults
     openai_model: str = Field(default="gpt-5-mini", validation_alias="OPENAI_MODEL")
-    openai_temperature: float | None = Field(default=None, validation_alias="OPENAI_TEMPERATURE")
-    max_steps: int = Field(default=80, validation_alias="MAX_STEPS")
-    max_actions_per_step: int = Field(default=12)
-    max_input_tokens: int = Field(default=128_000)
-    use_vision: bool = Field(default=True)
+    openai_temperature: float | None = None
+    max_steps: int = 80
+    max_actions_per_step: int = 12
+    max_input_tokens: int = 128_000
+    use_vision: bool = True
 
     openai_api_key: str | None = Field(default=None, validation_alias="OPENAI_API_KEY")
     openai_base_url: str | None = Field(default=None, validation_alias="OPENAI_ENDPOINT")
 
     # Browser + storage
-    base_data_dir: Path = Field(default=Path("/app/data"), validation_alias="BASE_DATA_DIR")
+    base_data_dir: Path = Field(default=Path("./data"), validation_alias="BASE_DATA_DIR")
     tasks_dir_name: str = "tasks"
-    browser_width: int = 1400
-    browser_height: int = 1100
+    browser_width: int = Field(default=1400)
+    browser_height: int = Field(default=1100)
     headless: bool = Field(default=False, validation_alias="HEADLESS")
     disable_security: bool = False
     deterministic_rendering: bool = False
@@ -61,10 +61,7 @@ class Settings(BaseSettings):
         default=None,
         validation_alias="HEAD_PUBLIC_KEYS",
     )
-    head_auth_required: bool = Field(
-        default=True,
-        validation_alias="NODE_REQUIRE_AUTH",
-    )
+    head_auth_required: bool = Field(default=True, validation_alias="NODE_REQUIRE_AUTH")
     head_jwt_algorithm: str = Field(default="EdDSA", validation_alias="NODE_JWT_ALG")
     head_token_audience: str = Field(default="node", validation_alias="NODE_AUDIENCE")
     enroll_token: str | None = Field(default=None, validation_alias="NODE_ENROLL_TOKEN")
