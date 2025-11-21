@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any
 from datetime import datetime
@@ -123,6 +124,24 @@ def create_app() -> FastAPI:
             issues.append("openai_key_missing")
         return {"status": "ok", "ready": ready, "issues": issues}
 
+    def _head_key_path() -> Path:
+        """Pick a path where the trusted head key should be stored."""
+        for candidate in settings.head_public_keys:
+            if not candidate:
+                continue
+            # Inline PEM strings contain the BEGIN header; skip those when choosing a filesystem path.
+            if "BEGIN PUBLIC KEY" in candidate:
+                continue
+            return Path(candidate).resolve()
+        return (settings.base_data_dir / "head-keys" / "head_public.pem").resolve()
+
+    async def _persist_head_key(pem: str, settings: Settings) -> Path:
+        """Write the PEM to disk so trust survives restarts."""
+        target = _head_key_path()
+        target.parent.mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread(target.write_text, pem, encoding="utf-8")
+        return target
+
     @app.post("/api/admin/head-key")
     async def install_head_key(payload: dict = Body(...)):
         token = payload.get("token")
@@ -138,9 +157,16 @@ def create_app() -> FastAPI:
             keys = load_public_keys([pem])
         except Exception:
             raise HTTPException(status_code=400, detail="Invalid public key")
-        settings.head_public_keys = [pem]
+        try:
+            target = await _persist_head_key(pem, settings)
+        except OSError as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to persist head public key: {exc!s}",
+            )
+        settings.head_public_keys = [str(target)]
         app.state.verifier = _reload_verifier()
-        return {"status": "ok", "trusted_keys": len(keys)}
+        return {"status": "ok", "trusted_keys": len(keys), "path": str(target)}
 
     # Health endpoint for unauthenticated checks
     @app.get("/healthz")

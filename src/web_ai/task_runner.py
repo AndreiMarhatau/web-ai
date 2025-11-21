@@ -307,8 +307,10 @@ class TaskManager:
         downloads_dir = task_dir / "downloads"
         recordings_dir = task_dir / "recordings"
         traces_dir = task_dir / "traces"
-        for directory in (task_dir, browser_dir, downloads_dir, recordings_dir, traces_dir):
-            directory.mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread(
+            self._prepare_directories,
+            (task_dir, browser_dir, downloads_dir, recordings_dir, traces_dir),
+        )
 
         temperature = (
             payload.temperature
@@ -858,3 +860,8 @@ class TaskManager:
 
     async def ensure_vnc_token(self, task_id: str, token: str) -> None:
         await self.vnc_manager.register_existing(task_id, token)
+
+    @staticmethod
+    def _prepare_directories(directories: tuple[Path, ...]) -> None:
+        for directory in directories:
+            directory.mkdir(parents=True, exist_ok=True)
