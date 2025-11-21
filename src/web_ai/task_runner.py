@@ -210,10 +210,14 @@ class TaskManager:
         for persisted in await self.storage.load_all_async():
             runtime = TaskRuntime(data=persisted)
             self._tasks[persisted.record.id] = runtime
+            if not persisted.record.node_id or persisted.record.node_id == "default":
+                persisted.record.node_id = self.settings.node_id
+                needs_save = True
+            else:
+                needs_save = False
             await self.vnc_manager.register_existing(
                 persisted.record.id, persisted.record.vnc_token
             )
-            needs_save = False
             original_schedule = persisted.record.scheduled_for
             try:
                 normalized = _normalize_datetime(persisted.record.scheduled_for)
@@ -253,6 +257,7 @@ class TaskManager:
             browser_open = self._sync_browser_state(runtime)
             summaries.append(
                 TaskSummary(
+                    node_id=record.node_id,
                     id=record.id,
                     title=record.title,
                     status=record.status,
@@ -302,8 +307,10 @@ class TaskManager:
         downloads_dir = task_dir / "downloads"
         recordings_dir = task_dir / "recordings"
         traces_dir = task_dir / "traces"
-        for directory in (task_dir, browser_dir, downloads_dir, recordings_dir, traces_dir):
-            directory.mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread(
+            self._prepare_directories,
+            (task_dir, browser_dir, downloads_dir, recordings_dir, traces_dir),
+        )
 
         temperature = (
             payload.temperature
@@ -315,6 +322,7 @@ class TaskManager:
             raise ValueError("Scheduled start time must be in the future.")
 
         record = TaskRecord(
+            node_id=self.settings.node_id,
             id=task_id,
             title=payload.title,
             instructions=payload.instructions,
@@ -852,3 +860,8 @@ class TaskManager:
 
     async def ensure_vnc_token(self, task_id: str, token: str) -> None:
         await self.vnc_manager.register_existing(task_id, token)
+
+    @staticmethod
+    def _prepare_directories(directories: tuple[Path, ...]) -> None:
+        for directory in directories:
+            directory.mkdir(parents=True, exist_ok=True)

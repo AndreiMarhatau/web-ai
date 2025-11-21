@@ -30,6 +30,11 @@ class TaskStorage:
         with self._task_file(task.record.id).open("w", encoding="utf-8") as fp:
             json.dump(payload, fp, indent=2, ensure_ascii=False)
 
+    def save_text(self, path: Path, content: str) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", encoding="utf-8") as fp:
+            fp.write(content)
+
     def load_all(self) -> list[PersistedTask]:
         persisted: list[PersistedTask] = []
         for entry in self.base_dir.iterdir():

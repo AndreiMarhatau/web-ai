@@ -1,25 +1,54 @@
 name: webai
 
 services:
-  web-ai:
-    container_name: browser-web-ai
+  head:
+    container_name: web-ai-head
     build:
-      context: https://github.com/AndreiMarhatau/web-ai.git#main
+      context: .
       dockerfile: Dockerfile
+    command: ["python", "webai_head.py"]
     ports:
-      - "${WEB_AI_PORT:-7790}:7790"
+      - "${HEAD_PORT:-7790}:7790"
+    env_file:
+      - .env.head
+    environment:
+      HEAD_PORT: ${HEAD_PORT:-7790}
+      HEAD_KEY_DIR: /app/head-keys
+      HEAD_PRIVATE_KEY_PATH: /app/head-keys/head_private.pem
+      HEAD_PUBLIC_KEY_PATH: /app/head-keys/head_public.pem
+    volumes:
+      - head_keys:/app/head-keys
+    restart: unless-stopped
+
+  node:
+    container_name: web-ai-node-default
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+    depends_on:
+      - head
+    ports:
+      - "${APP_PORT:-8001}:8001"
       - "${VNC_HTTP_PORT:-6180}:6180"
       - "${VNC_TCP_PORT:-5902}:5902"
       - "9223:9223"
     env_file:
-      - .env
+      - .env.node
     environment:
+      APP_PORT: ${APP_PORT:-8001}
+      APP_HOST: 0.0.0.0
       DISPLAY: ${DISPLAY:-:99}
-      RESOLUTION: ${RESOLUTION:-1920x1080x24}
+      ENV_RESOLUTION_WIDTH: ${RESOLUTION_WIDTH:-1920}
+      ENV_RESOLUTION_HEIGHT: ${RESOLUTION_HEIGHT:-1080}
       VNC_TCP_PORT: ${VNC_TCP_PORT:-5902}
       VNC_HTTP_PORT: ${VNC_HTTP_PORT:-6180}
+      NODE_ID: default
+      NODE_NAME: default
+      HEAD_PUBLIC_KEYS: /app/head-keys/head_public.pem
     volumes:
-      - webai_data:/app/data
+      - node_data:/app/web-ai/data
+      - head_keys:/app/head-keys:ro
     restart: unless-stopped
     shm_size: "2g"
     cap_add:
@@ -33,4 +62,5 @@ services:
       retries: 5
 
 volumes:
-  webai_data:
+  node_data:
+  head_keys:

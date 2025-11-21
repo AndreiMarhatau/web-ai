@@ -7,10 +7,12 @@ interface TaskCardProps {
   task: TaskSummary
   onDelete: (task: TaskSummary) => void
   deleting?: boolean
+  nodeName?: string
 }
 
-function TaskCard({ task, onDelete, deleting }: TaskCardProps) {
+function TaskCard({ task, onDelete, deleting, nodeName }: TaskCardProps) {
   const scheduledLabel = task.scheduled_for ? new Date(task.scheduled_for).toLocaleString() : null
+  const nodeLabel = nodeName || task.node_id
   return (
     <Card variant="outlined">
       <CardContent>
@@ -21,6 +23,7 @@ function TaskCard({ task, onDelete, deleting }: TaskCardProps) {
             </Typography>
             <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
               <Chip label={task.status} color={statusTone(task.status, task.needs_attention)} size="small" />
+              <Chip label={`Node: ${nodeLabel}`} size="small" variant="outlined" />
               {scheduledLabel && (
                 <Chip label={`Starts ${scheduledLabel}`} color="warning" size="small" variant="outlined" />
               )}
@@ -31,7 +34,7 @@ function TaskCard({ task, onDelete, deleting }: TaskCardProps) {
             </Stack>
           </div>
           <Stack direction="row" spacing={1}>
-            <Button component={RouterLink} to={`/tasks/${task.id}`} variant="outlined">
+            <Button component={RouterLink} to={`/tasks/${task.id}?node=${task.node_id}`} variant="outlined">
               View
             </Button>
             <Button variant="contained" color="error" disabled={deleting} onClick={() => onDelete(task)}>

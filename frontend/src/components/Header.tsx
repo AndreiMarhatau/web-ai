@@ -45,6 +45,16 @@ function Header() {
                   </Button>
                 )}
               </NavLink>
+              <NavLink to="/nodes" style={{ textDecoration: 'none' }}>
+                {({ isActive }) => (
+                  <Button
+                    color="inherit"
+                    sx={{ borderRadius: 999, textTransform: 'none', fontWeight: 600, px: 2, opacity: isActive ? 1 : 0.65 }}
+                  >
+                    Nodes
+                  </Button>
+                )}
+              </NavLink>
             </Stack>
             <Chip label={status.text} color={chipColor} variant="outlined" sx={{ textTransform: 'uppercase', letterSpacing: '0.15em' }} />
           </Stack>

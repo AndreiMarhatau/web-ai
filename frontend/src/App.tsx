@@ -4,6 +4,7 @@ import Header from './components/Header'
 import TasksPage from './pages/TasksPage'
 import CreateTaskPage from './pages/CreateTaskPage'
 import TaskDetailPage from './pages/TaskDetailPage'
+import NodesPage from './pages/NodesPage'
 import { ApiStatusProvider } from './contexts/apiStatus'
 
 let theme = createTheme({
@@ -61,6 +62,7 @@ function App() {
                 <Route path="/" element={<TasksPage />} />
                 <Route path="/tasks/new" element={<CreateTaskPage />} />
                 <Route path="/tasks/:taskId" element={<TaskDetailPage />} />
+                <Route path="/nodes" element={<NodesPage />} />
                 <Route path="*" element={<TasksPage />} />
               </Routes>
             </Container>

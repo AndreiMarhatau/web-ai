@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { Link as RouterLink, useParams } from 'react-router-dom'
+import { Link as RouterLink, useParams, useSearchParams } from 'react-router-dom'
 import {
   Paper,
   Stack,
@@ -33,6 +33,7 @@ function toInputDate(value: string) {
 
 function TaskDetailPage() {
   const { taskId } = useParams<{ taskId: string }>()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { setStatus } = useApiStatus()
   const [detail, setDetail] = useState<TaskDetail | null>(null)
   const [loading, setLoading] = useState(true)
@@ -44,21 +45,27 @@ function TaskDetailPage() {
   const [rescheduling, setRescheduling] = useState(false)
   const [runningNow, setRunningNow] = useState(false)
 
+  const nodeId = searchParams.get('node') || searchParams.get('node_id') || ''
+  const nodeSuffix = nodeId ? `?node_id=${nodeId}` : ''
+
   const loadDetail = useCallback(async () => {
     if (!taskId) {
       return
     }
     setLoading(true)
     try {
-      const data = await api<TaskDetail>(`/api/tasks/${taskId}`)
+      const data = await api<TaskDetail>(`/api/tasks/${taskId}${nodeSuffix}`)
       setDetail(data)
+      if (!nodeId && data.record.node_id) {
+        setSearchParams({ node: data.record.node_id })
+      }
       setStatus('Detail updated', 'success')
     } catch (err) {
       setStatus((err as Error).message, 'danger')
     } finally {
       setLoading(false)
     }
-  }, [setStatus, taskId])
+  }, [nodeId, nodeSuffix, setSearchParams, setStatus, taskId])
 
   useEffect(() => {
     loadDetail()
@@ -78,6 +85,7 @@ function TaskDetailPage() {
 
   const record = detail?.record
   const canContinue = Boolean(record && !blockedStatuses.includes(record.status))
+  const nodeLabel = nodeId || record?.node_id || 'default'
 
   const handleContinue = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -91,7 +99,7 @@ function TaskDetailPage() {
     }
     setContinuing(true)
     try {
-      await api(`/api/tasks/${record.id}/continue`, {
+      await api(`/api/tasks/${record.id}/continue${nodeSuffix}`, {
         method: 'POST',
         body: JSON.stringify({ instructions }),
       })
@@ -119,7 +127,7 @@ function TaskDetailPage() {
     }
     setAssisting(true)
     try {
-      await api(`/api/tasks/${record.id}/assist`, {
+      await api(`/api/tasks/${record.id}/assist${nodeSuffix}`, {
         method: 'POST',
         body: JSON.stringify({ message: response }),
       })
@@ -141,7 +149,7 @@ function TaskDetailPage() {
     }
     setRunningNow(true)
     try {
-      await api(`/api/tasks/${record.id}/run-now`, { method: 'POST' })
+      await api(`/api/tasks/${record.id}/run-now${nodeSuffix}`, { method: 'POST' })
       setStatus('Scheduled task started', 'success')
       await loadDetail()
     } catch (err) {
@@ -173,7 +181,7 @@ function TaskDetailPage() {
     }
     setRescheduling(true)
     try {
-      await api(`/api/tasks/${record.id}/schedule`, {
+      await api(`/api/tasks/${record.id}/schedule${nodeSuffix}`, {
         method: 'POST',
         body: JSON.stringify({ scheduled_for: parsed.toISOString() }),
       })
@@ -192,7 +200,7 @@ function TaskDetailPage() {
     if (!record || !window.confirm('Closing the browser will discard the preserved session. Continue?')) {
       return
     }
-    await api(`/api/tasks/${record.id}/close-browser`, { method: 'POST' })
+    await api(`/api/tasks/${record.id}/close-browser${nodeSuffix}`, { method: 'POST' })
     setStatus('Browser closed', 'success')
     await loadDetail()
   }
@@ -201,7 +209,7 @@ function TaskDetailPage() {
     if (!record) {
       return
     }
-    await api(`/api/tasks/${record.id}/open-browser`, { method: 'POST' })
+    await api(`/api/tasks/${record.id}/open-browser${nodeSuffix}`, { method: 'POST' })
     setStatus('Browser reopened', 'success')
     await loadDetail()
   }
@@ -234,6 +242,7 @@ function TaskDetailPage() {
           <Button component={RouterLink} to="/" variant="outlined">
             Back to tasks
           </Button>
+          <Chip label={`Node: ${nodeLabel}`} variant="outlined" />
           <Chip label={record ? record.status : loading ? 'Loading…' : 'Unknown'} color={record ? statusTone(record.status, record.needs_attention) : 'default'} variant="outlined" />
         </Stack>
       </Stack>

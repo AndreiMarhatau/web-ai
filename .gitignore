@@ -4,6 +4,7 @@ __pycache__/
 *.pyd
 .env
 .env.*
+!.env.*.example
 *.log
 .venv/
 .uv-cache/

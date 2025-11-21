@@ -1,6 +1,6 @@
 # Web-AI
 
-The `web-ai` service exposes a FastAPI dashboard that manages Browser-Use automation tasks.
+The `web-ai` stack is now split into a **head** (UI + security + routing) and one or more **nodes** (task runners that store browser data and schedules locally).
 
 ## Features
 
@@ -10,38 +10,55 @@ The `web-ai` service exposes a FastAPI dashboard that manages Browser-Use automa
 - Keep finished browsers alive (one per task) and close them manually when no longer needed.
 - Respond to `ask_human` actions directly from the task detail pane.
 - Serve a modern React SPA (Material UI based) from `frontend/dist` so the dashboard is dynamic without frequent page reloads.
+- Run multiple nodes; tasks stay on the node where they were created. The head never moves browser data between nodes.
 
 ## Running locally
 
 ```bash
-cp .env.webai.example .env.webai
-# fill in OPENAI_API_KEY, adjust host/ports if needed
+# install uv if you don't have it yet: https://docs.astral.sh/uv/getting-started/installation/
+uv sync --all-groups
+
+# build the frontend for the UI served by the head
 cd frontend
 npm install
 npm run build
 cd ..
 
-# install uv if you don't have it yet: https://docs.astral.sh/uv/getting-started/installation/
-uv sync --all-groups
+# run a node locally (stores tasks + browser data)
 export PYTHONPATH=$(pwd)/src
-uv run python webai.py
+APP_PORT=8001 NODE_ID=local NODE_REQUIRE_AUTH=false uv run python webai.py
+
+# run the head locally (UI + routing)
+HEAD_NODES=http://localhost:8001|local HEAD_PORT=7790 uv run python webai_head.py
 ```
 
-Access the UI at `http://localhost:7790` (configurable via `WEB_AI_PORT`).
+Access the UI at `http://localhost:7790`. Tasks will run on the `local` node. For production, set `WEB_AI_HEAD_PUBLIC_KEYS` on nodes to the head public key and remove the insecure `disabled` placeholder.
 
 `uv sync --all-groups` installs backend dev dependencies too, so you can run backend tests with `uv run pytest`.
 
 - Supported OpenAI models exposed in the UI: `gpt-5`, `gpt-5-mini`, `gpt-5-nano`.
 - Reasoning effort options: `low`, `medium`, `high`, or automatic (unset).
-- Task data is stored inside the `webai_data` Docker volume (`/app/data` inside the container).
-- VNC viewer is proxied through the Web-AI server; each task gets a unique token.
-- Finished sessions stay available thanks to persisted JSON histories.
+- Task data is stored inside the node volume (`/app/data` inside the node container).
+- VNC viewer is served by the node; head returns node-specific VNC URLs secured by per-task tokens.
+- Finished sessions stay available thanks to persisted JSON histories stored on each node.
 
-You can also build the full service via Docker Compose; the frontend build is executed inside the image:
+You can also build the full service via Docker Compose (head + one node by default):
 
 ```bash
-docker compose -f docker-compose.webai.yml up -d --build
+docker compose up -d --build
 ```
+
+Compose notes:
+- The head generates its keypair; nodes verify requests with the head public key. With the default auth-enabled setup, ensure the head writes `head_public.pem` to the shared `head_keys` volume before making authenticated calls. Nodes will reload trusted keys on demand, but secured APIs return 503 until the key exists.
+- For quick local bring-up without the head key, set `NODE_REQUIRE_AUTH=false` on the node.
+- Sample `.env.head` (create this file or set env vars) — see `.env.head.example`:
+
+```
+HEAD_NODES=http://node:8001|default
+HEAD_PORT=7790
+```
+
+- Sample `.env` for nodes (see `.env.node.example`): set `OPENAI_API_KEY`, `HEAD_PUBLIC_KEYS` (path or PEM), and `NODE_ID`.
 
 ## Development
 

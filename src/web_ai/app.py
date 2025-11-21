@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any
 from datetime import datetime
 
-from fastapi import Body, Depends, FastAPI, HTTPException, Response
+from fastapi import Body, Depends, FastAPI, HTTPException, Response, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, field_validator
@@ -12,6 +13,8 @@ from pydantic import BaseModel, field_validator
 from .config import Settings, get_settings
 from .models import TaskCreatePayload
 from .task_runner import TaskManager, _safe_model_dump
+from .security import TokenVerifier, load_public_keys
+from .storage import TaskStorage
 
 BASE_MODELS = [
     "gpt-5",
@@ -58,10 +61,27 @@ def create_app() -> FastAPI:
     manager = TaskManager(settings)
     supported_models = sorted(set(BASE_MODELS + [settings.openai_model]))
 
+    verifier: TokenVerifier | None = None
+    def _reload_verifier() -> TokenVerifier | None:
+        if not settings.head_auth_required:
+            return None
+        public_keys = load_public_keys(settings.head_public_keys)
+        if public_keys:
+            return TokenVerifier(
+                public_keys=public_keys,
+                audience=settings.head_token_audience,
+                algorithm=settings.head_jwt_algorithm,
+            )
+        return None
+
+    verifier: TokenVerifier | None = _reload_verifier()
+
     app = FastAPI(title="Browser Web AI", version="0.1.0")
     app.state.settings = settings
     app.state.manager = manager
     app.state.supported_models = supported_models
+    app.state.verifier = verifier
+    app.state.enroll_token = settings.enroll_token
 
     @app.on_event("startup")
     async def startup() -> None:  # pragma: no cover - FastAPI hook
@@ -74,12 +94,101 @@ def create_app() -> FastAPI:
     def get_ctx() -> tuple[TaskManager, Settings]:
         return app.state.manager, app.state.settings
 
+    async def require_head_auth(request: Request):
+        if not settings.head_auth_required:
+            return
+        verifier = app.state.verifier or _reload_verifier()
+        app.state.verifier = verifier
+        if verifier is None:
+            raise HTTPException(status_code=503, detail="Trusted head keys not configured")
+        auth_header = request.headers.get("authorization") or request.headers.get("Authorization")
+        if not auth_header or not auth_header.lower().startswith("bearer "):
+            raise HTTPException(status_code=401, detail="Missing authorization")
+        token = auth_header.split(" ", 1)[1].strip()
+        try:
+            verifier.verify_for_node(token, node_id=settings.node_id)
+        except Exception:
+            raise HTTPException(status_code=401, detail="Invalid token")
+
+    def _health_status() -> dict[str, Any]:
+        issues: list[str] = []
+        ready = True
+        if settings.head_auth_required:
+            verifier = app.state.verifier or _reload_verifier()
+            app.state.verifier = verifier
+            if not verifier:
+                ready = False
+                issues.append("head_trust_missing")
+        if not settings.openai_api_key:
+            ready = False
+            issues.append("openai_key_missing")
+        return {"status": "ok", "ready": ready, "issues": issues}
+
+    def _head_key_path() -> Path:
+        """Pick a path where the trusted head key should be stored."""
+        for candidate in settings.head_public_keys:
+            if not candidate:
+                continue
+            # Inline PEM strings contain the BEGIN header; skip those when choosing a filesystem path.
+            if "BEGIN PUBLIC KEY" in candidate:
+                continue
+            return Path(candidate).resolve()
+        return (settings.base_data_dir / "head-keys" / "head_public.pem").resolve()
+
+    async def _persist_head_key(pem: str, settings: Settings) -> Path:
+        """Write the PEM to disk so trust survives restarts."""
+        target = _head_key_path()
+        target.parent.mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread(target.write_text, pem, encoding="utf-8")
+        return target
+
+    @app.post("/api/admin/head-key")
+    async def install_head_key(payload: dict = Body(...)):
+        token = payload.get("token")
+        pem = payload.get("public_key") or payload.get("publicKey")
+        if settings.enroll_token:
+            if token != settings.enroll_token:
+                raise HTTPException(status_code=401, detail="Invalid enroll token")
+        else:
+            raise HTTPException(status_code=403, detail="Enrollment disabled")
+        if not pem or not isinstance(pem, str):
+            raise HTTPException(status_code=400, detail="public_key is required")
+        try:
+            keys = load_public_keys([pem])
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid public key")
+        try:
+            target = await _persist_head_key(pem, settings)
+        except OSError as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to persist head public key: {exc!s}",
+            )
+        settings.head_public_keys = [str(target)]
+        app.state.verifier = _reload_verifier()
+        return {"status": "ok", "trusted_keys": len(keys), "path": str(target)}
+
+    # Health endpoint for unauthenticated checks
     @app.get("/healthz")
     async def healthcheck():
-        return {"status": "ok"}
+        return _health_status()
+
+    @app.get("/api/node/info")
+    async def node_info(auth=Depends(require_head_auth)):
+        status = _health_status()
+        return {
+            "id": settings.node_id,
+            "name": settings.node_name,
+            "ready": status["ready"],
+            "issues": status["issues"],
+            "enrollment": bool(settings.enroll_token),
+        }
 
     @app.get("/api/config/defaults")
-    async def config_defaults(ctx: tuple[TaskManager, Settings] = Depends(get_ctx)):
+    async def config_defaults(
+        ctx: tuple[TaskManager, Settings] = Depends(get_ctx),
+        auth=Depends(require_head_auth),
+    ):
         _, config = ctx
         return {
             "model": config.openai_model,
@@ -92,10 +201,15 @@ def create_app() -> FastAPI:
             "reasoningEffortOptions": ["low", "medium", "high"],
             "schedulingEnabled": True,
             "scheduleCheckSeconds": config.schedule_check_interval_seconds,
+            "nodeId": config.node_id,
+            "nodeName": config.node_name,
         }
 
     @app.get("/api/tasks")
-    async def list_tasks(ctx: tuple[TaskManager, Settings] = Depends(get_ctx)):
+    async def list_tasks(
+        ctx: tuple[TaskManager, Settings] = Depends(get_ctx),
+        auth=Depends(require_head_auth),
+    ):
         manager, _ = ctx
         return [summary.model_dump(mode="json") for summary in manager.list_tasks()]
 
@@ -111,6 +225,7 @@ def create_app() -> FastAPI:
     async def create_task(
         payload: TaskCreatePayload,
         ctx: tuple[TaskManager, Settings] = Depends(get_ctx),
+        auth=Depends(require_head_auth),
     ):
         manager, settings = ctx
         if payload.model not in app.state.supported_models:
@@ -122,7 +237,11 @@ def create_app() -> FastAPI:
         return serialize_detail(detail)
 
     @app.get("/api/tasks/{task_id}")
-    async def task_detail(task_id: str, ctx: tuple[TaskManager, Settings] = Depends(get_ctx)):
+    async def task_detail(
+        task_id: str,
+        ctx: tuple[TaskManager, Settings] = Depends(get_ctx),
+        auth=Depends(require_head_auth),
+    ):
         manager, _ = ctx
         detail = manager.get_task_detail(task_id)
         if not detail:
@@ -134,6 +253,7 @@ def create_app() -> FastAPI:
         task_id: str,
         payload: AssistPayload = Body(...),
         ctx: tuple[TaskManager, Settings] = Depends(get_ctx),
+        auth=Depends(require_head_auth),
     ):
         manager, _ = ctx
         detail = await manager.submit_assistance(task_id, payload.message.strip())
@@ -146,6 +266,7 @@ def create_app() -> FastAPI:
         task_id: str,
         payload: ContinuePayload = Body(...),
         ctx: tuple[TaskManager, Settings] = Depends(get_ctx),
+        auth=Depends(require_head_auth),
     ):
         manager, _ = ctx
         try:
@@ -159,7 +280,11 @@ def create_app() -> FastAPI:
         return serialize_detail(detail)
 
     @app.post("/api/tasks/{task_id}/run-now")
-    async def run_scheduled_now(task_id: str, ctx: tuple[TaskManager, Settings] = Depends(get_ctx)):
+    async def run_scheduled_now(
+        task_id: str,
+        ctx: tuple[TaskManager, Settings] = Depends(get_ctx),
+        auth=Depends(require_head_auth),
+    ):
         manager, _ = ctx
         if not manager.get_task(task_id):
             raise HTTPException(status_code=404, detail="Task not found")
@@ -173,6 +298,7 @@ def create_app() -> FastAPI:
         task_id: str,
         payload: SchedulePayload = Body(...),
         ctx: tuple[TaskManager, Settings] = Depends(get_ctx),
+        auth=Depends(require_head_auth),
     ):
         manager, _ = ctx
         if not manager.get_task(task_id):
@@ -189,6 +315,7 @@ def create_app() -> FastAPI:
     async def close_browser(
         task_id: str,
         ctx: tuple[TaskManager, Settings] = Depends(get_ctx),
+        auth=Depends(require_head_auth),
     ):
         manager, _ = ctx
         detail = await manager.close_browser(task_id)
@@ -200,6 +327,7 @@ def create_app() -> FastAPI:
     async def open_browser(
         task_id: str,
         ctx: tuple[TaskManager, Settings] = Depends(get_ctx),
+        auth=Depends(require_head_auth),
     ):
         manager, _ = ctx
         detail = await manager.reopen_browser(task_id)
@@ -208,7 +336,11 @@ def create_app() -> FastAPI:
         return serialize_detail(detail)
 
     @app.delete("/api/tasks/{task_id}", status_code=204)
-    async def delete_task(task_id: str, ctx: tuple[TaskManager, Settings] = Depends(get_ctx)):
+    async def delete_task(
+        task_id: str,
+        ctx: tuple[TaskManager, Settings] = Depends(get_ctx),
+        auth=Depends(require_head_auth),
+    ):
         manager, _ = ctx
         deleted = await manager.delete_task(task_id)
         if not deleted:
