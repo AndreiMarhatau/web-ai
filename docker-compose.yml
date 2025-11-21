@@ -13,7 +13,6 @@ services:
       - .env.head
     environment:
       HEAD_PORT: ${HEAD_PORT:-7790}
-      HEAD_NODES: ${HEAD_NODES:-http://node:8001|default}
       HEAD_KEY_DIR: /app/head-keys
       HEAD_PRIVATE_KEY_PATH: /app/head-keys/head_private.pem
       HEAD_PUBLIC_KEY_PATH: /app/head-keys/head_public.pem
