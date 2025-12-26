@@ -214,7 +214,7 @@ function TaskDetailPage() {
     await loadDetail()
   }
 
-  const handleOpenVnc = () => {
+  const handleOpenAssist = () => {
     if (!detail?.vnc_launch_url) {
       return
     }
@@ -266,11 +266,6 @@ function TaskDetailPage() {
                 <Chip color="error" label={`Error: ${record.last_error}`} sx={{ mb: 2 }} />
               )}
               <Stack direction="row" spacing={1} flexWrap="wrap">
-                {detail.vnc_launch_url && (
-                  <Button onClick={handleOpenVnc} disabled={!record?.browser_open} variant="outlined">
-                    Open VNC
-                  </Button>
-                )}
                 {record?.browser_open ? (
                   <Button onClick={handleCloseBrowser} color="error" variant="contained">
                     Close browser
@@ -388,6 +383,11 @@ function TaskDetailPage() {
             <Card variant="outlined">
               <CardHeader title="Assistance requested" subheader={record.assistance?.question || 'Agent waiting for guidance.'} />
               <CardContent component="form" onSubmit={handleAssist} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {detail?.vnc_launch_url && (
+                  <Button onClick={handleOpenAssist} variant="outlined" disabled={!record?.browser_open}>
+                    Open assist session
+                  </Button>
+                )}
                 <TextField
                   multiline
                   minRows={3}

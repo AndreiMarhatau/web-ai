@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import secrets
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -215,9 +216,6 @@ class TaskManager:
                 needs_save = True
             else:
                 needs_save = False
-            await self.vnc_manager.register_existing(
-                persisted.record.id, persisted.record.vnc_token
-            )
             original_schedule = persisted.record.scheduled_for
             try:
                 normalized = _normalize_datetime(persisted.record.scheduled_for)
@@ -246,6 +244,10 @@ class TaskManager:
             if needs_save:
                 persisted.record.updated_at = utcnow()
                 await self.storage.save_async(persisted)
+            if self._vnc_is_allowed(persisted.record):
+                await self.vnc_manager.register_existing(
+                    persisted.record.id, persisted.record.vnc_token
+                )
         await self._start_due_scheduled_tasks()
         if not self._scheduler_task:
             self._scheduler_task = asyncio.create_task(self._scheduled_runner())
@@ -285,13 +287,22 @@ class TaskManager:
         runtime.record.browser_open = browser_open
         return browser_open
 
+    @staticmethod
+    def _vnc_is_allowed(record: TaskRecord) -> bool:
+        return (
+            record.status == TaskStatus.waiting_for_input
+            and record.needs_attention
+        )
+
     def get_task_detail(self, task_id: str) -> TaskDetail | None:
         runtime = self._tasks.get(task_id)
         if not runtime:
             return None
         self._sync_browser_state(runtime)
         record = runtime.record
-        vnc_url = f"/tasks/{record.id}/vnc?token={record.vnc_token}"
+        vnc_url = None
+        if self._vnc_is_allowed(record):
+            vnc_url = f"/tasks/{record.id}/assist?token={record.vnc_token}"
         return TaskDetail(
             record=record,
             steps=runtime.data.steps,
@@ -301,7 +312,7 @@ class TaskManager:
 
     async def create_task(self, payload: TaskCreatePayload) -> TaskDetail:
         task_id = str(uuid.uuid4())
-        token = await self.vnc_manager.mint(task_id)
+        token = secrets.token_urlsafe(24)
         task_dir = self.settings.tasks_dir / task_id
         browser_dir = task_dir / "browser-data"
         downloads_dir = task_dir / "downloads"
@@ -370,6 +381,7 @@ class TaskManager:
         async with self._lock:
             if self._tasks.get(runtime.record.id) is not runtime:
                 return
+        await self.vnc_manager.revoke(runtime.record.id)
         runtime.record.status = TaskStatus.pending
         if clear_schedule:
             runtime.record.scheduled_for = None
@@ -494,6 +506,7 @@ class TaskManager:
             raise ValueError("Additional instructions are required to continue.")
 
         record = runtime.record
+        await self.vnc_manager.revoke(record.id)
         record.status = TaskStatus.pending
         record.browser_open = False
         record.last_error = None
@@ -695,6 +708,7 @@ class TaskManager:
         runtime.record.needs_attention = True
         runtime.record.status = TaskStatus.waiting_for_input
         runtime.record.assistance = AssistanceRequest(question=question)
+        runtime.record.vnc_token = await self.vnc_manager.mint(runtime.record.id)
         runtime.record.updated_at = utcnow()
         runtime.data.chat_history.append(
             ChatMessage(
@@ -710,6 +724,7 @@ class TaskManager:
             runtime.record.status = TaskStatus.running
             runtime.record.assistance.response_text = "Timed out waiting for user input."
             runtime.record.assistance.responded_at = utcnow()
+            await self.vnc_manager.revoke(runtime.record.id)
             await self.storage.save_async(runtime.data)
             return {"response": "Timeout waiting for user response."}
 
@@ -718,6 +733,7 @@ class TaskManager:
         runtime.record.status = TaskStatus.running
         runtime.record.assistance.response_text = response
         runtime.record.assistance.responded_at = utcnow()
+        await self.vnc_manager.revoke(runtime.record.id)
         runtime.data.chat_history.append(
             ChatMessage(role=ChatRole.user, content=response)
         )
@@ -731,7 +747,12 @@ class TaskManager:
         if not runtime or not runtime.assistance_event:
             return None
         runtime.pending_response = message
+        runtime.record.needs_attention = False
+        runtime.record.status = TaskStatus.running
+        runtime.record.updated_at = utcnow()
+        await self.storage.save_async(runtime.data)
         runtime.assistance_event.set()
+        await self.vnc_manager.revoke(task_id)
         return self.get_task_detail(task_id)
 
     async def close_browser(self, task_id: str) -> TaskDetail | None:
