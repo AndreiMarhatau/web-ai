@@ -71,11 +71,15 @@ def create_head_app() -> FastAPI:
         return response
 
     def _attach_vnc_host(node: HeadNode, payload: dict[str, Any]) -> dict[str, Any]:
+        base = str(node.url).rstrip("/")
         url = payload.get("vnc_launch_url")
         if url:
-            base = str(node.url).rstrip("/")
             path = url if url.startswith("/") else f"/{url}"
             payload["vnc_launch_url"] = f"{base}{path}"
+        admin_url = payload.get("vnc_url")
+        if admin_url:
+            path = admin_url if admin_url.startswith("/") else f"/{admin_url}"
+            payload["vnc_url"] = f"{base}{path}"
         return payload
 
     @app.post("/api/nodes/{node_id}/install-head-key")
@@ -189,6 +193,12 @@ def create_head_app() -> FastAPI:
         resp = await call_node(node, "POST", f"/api/tasks/{task_id}/schedule", json=payload)
         return _attach_vnc_host(node, resp.json())
 
+    @app.post("/api/tasks/{task_id}/stop")
+    async def stop_task(task_id: str, node_id: str = Query(None)):
+        node = get_node(node_id)
+        resp = await call_node(node, "POST", f"/api/tasks/{task_id}/stop")
+        return _attach_vnc_host(node, resp.json())
+
     @app.post("/api/tasks/{task_id}/close-browser")
     async def close_browser(task_id: str, node_id: str = Query(None)):
         node = get_node(node_id)
@@ -199,6 +209,12 @@ def create_head_app() -> FastAPI:
     async def open_browser(task_id: str, node_id: str = Query(None)):
         node = get_node(node_id)
         resp = await call_node(node, "POST", f"/api/tasks/{task_id}/open-browser")
+        return _attach_vnc_host(node, resp.json())
+
+    @app.post("/api/tasks/{task_id}/admin-vnc")
+    async def admin_vnc(task_id: str, node_id: str = Query(None)):
+        node = get_node(node_id)
+        resp = await call_node(node, "POST", f"/api/tasks/{task_id}/admin-vnc")
         return _attach_vnc_host(node, resp.json())
 
     @app.delete("/api/tasks/{task_id}", status_code=204)

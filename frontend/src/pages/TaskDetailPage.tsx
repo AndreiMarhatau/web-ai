@@ -44,6 +44,8 @@ function TaskDetailPage() {
   const [scheduleInput, setScheduleInput] = useState('')
   const [rescheduling, setRescheduling] = useState(false)
   const [runningNow, setRunningNow] = useState(false)
+  const [stopping, setStopping] = useState(false)
+  const [openingAdminVnc, setOpeningAdminVnc] = useState(false)
 
   const nodeId = searchParams.get('node') || searchParams.get('node_id') || ''
   const nodeSuffix = nodeId ? `?node_id=${nodeId}` : ''
@@ -85,6 +87,7 @@ function TaskDetailPage() {
 
   const record = detail?.record
   const canContinue = Boolean(record && !blockedStatuses.includes(record.status))
+  const canStop = record?.status === 'running'
   const nodeLabel = nodeId || record?.node_id || 'default'
 
   const handleContinue = async (event: FormEvent<HTMLFormElement>) => {
@@ -221,6 +224,46 @@ function TaskDetailPage() {
     window.open(detail.vnc_launch_url, '_blank')
   }
 
+  const handleStopTask = async () => {
+    if (!record || !canStop) {
+      return
+    }
+    if (!window.confirm('Stop this running task? The current session will be closed.')) {
+      return
+    }
+    setStopping(true)
+    try {
+      await api(`/api/tasks/${record.id}/stop${nodeSuffix}`, { method: 'POST' })
+      setStatus('Task stopped', 'success')
+      await loadDetail()
+    } catch (err) {
+      const message = (err as Error).message
+      setStatus(message, 'danger')
+      alert(message)
+    } finally {
+      setStopping(false)
+    }
+  }
+
+  const handleOpenAdminVnc = async () => {
+    if (!record) {
+      return
+    }
+    setOpeningAdminVnc(true)
+    try {
+      const payload = await api<{ vnc_url: string }>(`/api/tasks/${record.id}/admin-vnc${nodeSuffix}`, {
+        method: 'POST',
+      })
+      window.open(payload.vnc_url, '_blank')
+    } catch (err) {
+      const message = (err as Error).message
+      setStatus(message, 'danger')
+      alert(message)
+    } finally {
+      setOpeningAdminVnc(false)
+    }
+  }
+
   if (!taskId) {
     return (
       <Paper sx={{ p: 4 }}>
@@ -275,6 +318,21 @@ function TaskDetailPage() {
                     Open browser
                   </Button>
                 )}
+                <Button
+                  onClick={handleOpenAdminVnc}
+                  variant="outlined"
+                  disabled={!record?.browser_open || openingAdminVnc}
+                >
+                  {openingAdminVnc ? 'Opening…' : 'Open live VNC (view-only)'}
+                </Button>
+                <Button
+                  onClick={handleStopTask}
+                  color="warning"
+                  variant="contained"
+                  disabled={!canStop || stopping}
+                >
+                  {stopping ? 'Stopping…' : 'Stop task'}
+                </Button>
               </Stack>
             </CardContent>
           </Card>
