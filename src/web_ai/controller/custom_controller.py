@@ -70,6 +70,8 @@ class CustomController(Controller):
                     user_response = await self.ask_assistant_callback(query, browser)
                 else:
                     user_response = self.ask_assistant_callback(query, browser)
+                    if inspect.isawaitable(user_response):
+                        user_response = await user_response
                 msg = f"AI ask: {query}. User response: {user_response['response']}"
                 logger.info(msg)
                 return ActionResult(extracted_content=msg, include_in_memory=True)
