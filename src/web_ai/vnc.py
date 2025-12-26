@@ -14,38 +14,72 @@ class VNCManager:
         self.target_host = target_host
         self.target_port = target_port
         self._lock = asyncio.Lock()
-        self._task_tokens: dict[str, str] = {}
+        self._token_map: dict[str, tuple[str, str, int]] = {}
+        self._task_tokens: dict[str, set[str]] = {}
         self.token_file.parent.mkdir(parents=True, exist_ok=True)
         self.token_file.touch(exist_ok=True)
 
-    async def register_existing(self, task_id: str, token: str) -> None:
+    async def register_existing(
+        self,
+        task_id: str,
+        token: str,
+        *,
+        target_host: str | None = None,
+        target_port: int | None = None,
+    ) -> None:
         async with self._lock:
-            self._task_tokens[task_id] = token
+            host = target_host or self.target_host
+            port = target_port or self.target_port
+            self._token_map[token] = (task_id, host, port)
+            self._task_tokens.setdefault(task_id, set()).add(token)
             await self._write_tokens()
 
-    async def mint(self, task_id: str) -> str:
+    async def mint(
+        self,
+        task_id: str,
+        *,
+        target_host: str | None = None,
+        target_port: int | None = None,
+    ) -> str:
         async with self._lock:
             token = secrets.token_urlsafe(24)
-            self._task_tokens[task_id] = token
+            host = target_host or self.target_host
+            port = target_port or self.target_port
+            self._token_map[token] = (task_id, host, port)
+            self._task_tokens.setdefault(task_id, set()).add(token)
             await self._write_tokens()
             return token
 
     async def revoke(self, task_id: str) -> None:
         async with self._lock:
-            if task_id in self._task_tokens:
-                self._task_tokens.pop(task_id)
+            tokens = self._task_tokens.pop(task_id, set())
+            if tokens:
+                for token in tokens:
+                    self._token_map.pop(token, None)
                 await self._write_tokens()
 
+    def lookup_task_id(self, token: str) -> str | None:
+        entry = self._token_map.get(token)
+        if not entry:
+            return None
+        return entry[0]
+
     def lookup(self, task_id: str) -> str | None:
-        return self._task_tokens.get(task_id)
+        tokens = self._task_tokens.get(task_id)
+        if not tokens:
+            return None
+        return next(iter(sorted(tokens)))
 
     async def _write_tokens(self) -> None:
-        lines = self._render_lines(self._task_tokens.values())
+        lines = self._render_lines(self._token_map.items())
         await asyncio.to_thread(self._write_file, lines)
 
-    def _render_lines(self, tokens: Iterable[str]) -> str:
+    def _render_lines(
+        self, tokens: Iterable[tuple[str, tuple[str, str, int]]]
+    ) -> str:
         return "\n".join(
-            f"{token}: {self.target_host}:{self.target_port}" for token in tokens
+            f"{token}: {host}:{port}"
+            for token, (_, host, port) in sorted(tokens)
         )
 
     def _write_file(self, content: str) -> None:

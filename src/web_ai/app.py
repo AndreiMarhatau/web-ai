@@ -332,6 +332,23 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=409, detail="Task is not scheduled.")
         return serialize_detail(detail)
 
+    @app.post("/api/tasks/{task_id}/stop")
+    async def stop_task(
+        task_id: str,
+        ctx: tuple[TaskManager, Settings] = Depends(get_ctx),
+        auth=Depends(require_head_auth),
+    ):
+        manager, _ = ctx
+        if not manager.get_task(task_id):
+            raise HTTPException(status_code=404, detail="Task not found")
+        try:
+            detail = await manager.stop_task(task_id)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc))
+        if not detail:
+            raise HTTPException(status_code=404, detail="Task not found")
+        return serialize_detail(detail)
+
     @app.post("/api/tasks/{task_id}/close-browser")
     async def close_browser(
         task_id: str,
@@ -356,6 +373,20 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail="Task not found")
         return serialize_detail(detail)
 
+    @app.post("/api/tasks/{task_id}/admin-vnc")
+    async def admin_vnc(
+        task_id: str,
+        ctx: tuple[TaskManager, Settings] = Depends(get_ctx),
+        auth=Depends(require_head_auth),
+    ):
+        manager, _ = ctx
+        if not manager.get_task(task_id):
+            raise HTTPException(status_code=404, detail="Task not found")
+        token = await manager.mint_admin_vnc_token(task_id)
+        if not token:
+            raise HTTPException(status_code=409, detail="Browser is not open for this task.")
+        return {"vnc_url": f"/tasks/{task_id}/admin-vnc?token={token}"}
+
     @app.delete("/api/tasks/{task_id}", status_code=204)
     async def delete_task(
         task_id: str,
@@ -371,6 +402,95 @@ def create_app() -> FastAPI:
     @app.get("/tasks/{task_id}/vnc", response_class=HTMLResponse)
     async def open_vnc(task_id: str, token: str, ctx: tuple[TaskManager, Settings] = Depends(get_ctx)):
         return await open_assist(task_id, token, ctx)
+
+    def _render_admin_page(
+        *,
+        task_id: str,
+        novnc_url: str | None,
+        notice: str | None = None,
+    ) -> str:
+        notice_text = html.escape(notice) if notice else ""
+        notice_html = f"<p class=\"notice\">{notice_text}</p>" if notice else ""
+        frame_html = (
+            f"<iframe src=\"{html.escape(novnc_url, quote=True)}\" title=\"VNC\" allow=\"clipboard-read; clipboard-write\"></iframe>"
+            if novnc_url
+            else "<div class=\"placeholder\">VNC is unavailable for this task.</div>"
+        )
+        return f"""<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Admin VNC {task_id}</title>
+    <style>
+      :root {{
+        color-scheme: light;
+        font-family: "Inter", "Segoe UI", sans-serif;
+        background: #f3f5f7;
+        color: #1d2432;
+      }}
+      body {{
+        margin: 0;
+        padding: 24px;
+      }}
+      .shell {{
+        max-width: 1200px;
+        margin: 0 auto;
+        display: grid;
+        gap: 16px;
+      }}
+      header {{
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }}
+      header h1 {{
+        margin: 0;
+        font-size: 24px;
+      }}
+      .notice {{
+        background: #e6f0ff;
+        border: 1px solid #b4c9ff;
+        padding: 10px 12px;
+        border-radius: 10px;
+        margin: 0;
+      }}
+      .frame {{
+        background: #ffffff;
+        border-radius: 16px;
+        padding: 12px;
+        border: 1px solid #e3e6ea;
+      }}
+      iframe {{
+        width: 100%;
+        min-height: 520px;
+        border: none;
+        border-radius: 12px;
+        background: #111827;
+      }}
+      .placeholder {{
+        padding: 120px 16px;
+        text-align: center;
+        color: #6b7280;
+        border-radius: 12px;
+        border: 2px dashed #d1d5db;
+      }}
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <header>
+        <h1>Admin VNC {task_id}</h1>
+        <p>View-only access to the live session.</p>
+        {notice_html}
+      </header>
+      <section class="frame">
+        {frame_html}
+      </section>
+    </div>
+  </body>
+</html>
+"""
 
     def _render_assist_page(
         *,
@@ -561,6 +681,31 @@ def create_app() -> FastAPI:
             question=detail.record.assistance.question if detail.record.assistance else None,
             novnc_url=novnc_url,
             token=token,
+        )
+        return HTMLResponse(content=html)
+
+    @app.get("/tasks/{task_id}/admin-vnc", response_class=HTMLResponse)
+    async def open_admin_vnc(task_id: str, token: str, ctx: tuple[TaskManager, Settings] = Depends(get_ctx)):
+        manager, config = ctx
+        if not manager.validate_vnc_token(task_id, token):
+            raise HTTPException(status_code=403, detail="Invalid VNC token")
+        detail = manager.get_task_detail(task_id)
+        if not detail:
+            raise HTTPException(status_code=404, detail="Task not found")
+        if not detail.record.browser_open:
+            html = _render_admin_page(
+                task_id=task_id,
+                novnc_url=None,
+                notice="Browser is not open for this task.",
+            )
+            return HTMLResponse(content=html, status_code=409)
+        novnc_url = (
+            f"{config.vnc_scheme}://{config.vnc_public_host}:{config.vnc_http_port}/"
+            f"vnc.html?path=websockify?token={token}&view_only=1"
+        )
+        html = _render_admin_page(
+            task_id=task_id,
+            novnc_url=novnc_url,
         )
         return HTMLResponse(content=html)
 

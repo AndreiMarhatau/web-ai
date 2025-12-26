@@ -450,6 +450,12 @@ class TaskManager:
             agent_history = await runtime.agent.run(max_steps=record.max_steps)
             self._finalize_history(runtime, agent_history)
 
+        except asyncio.CancelledError:
+            record.status = TaskStatus.stopped
+            record.needs_attention = False
+            record.updated_at = utcnow()
+            await self.storage.save_async(runtime.data)
+            raise
         except Exception as exc:
             logger.exception("Task %s failed", record.id)
             record.status = TaskStatus.failed
@@ -831,6 +837,7 @@ class TaskManager:
             except Exception:
                 logger.debug("Failed to close MCP client", exc_info=True)
             runtime.controller = None
+        await self.vnc_manager.revoke(runtime.record.id)
         runtime.record.browser_open = False
 
     async def _scheduled_runner(self) -> None:
@@ -879,8 +886,49 @@ class TaskManager:
         await self.storage.delete_async(task_id)
         return True
 
+    async def stop_task(self, task_id: str) -> TaskDetail | None:
+        runtime = self.get_task(task_id)
+        if not runtime:
+            return None
+        if runtime.record.status != TaskStatus.running:
+            raise RuntimeError("Only running tasks can be stopped.")
+        runtime.record.status = TaskStatus.stopped
+        runtime.record.needs_attention = False
+        runtime.record.assistance = None
+        runtime.record.completed_at = utcnow()
+        runtime.record.updated_at = utcnow()
+        await self.storage.save_async(runtime.data)
+
+        if runtime.asyncio_task and not runtime.asyncio_task.done():
+            if runtime.agent:
+                runtime.agent.state.stopped = True
+            runtime.asyncio_task.cancel()
+            try:
+                await runtime.asyncio_task
+            except Exception:
+                pass
+
+        await self._close_browser(runtime)
+        runtime.record.updated_at = utcnow()
+        await self.storage.save_async(runtime.data)
+        return self.get_task_detail(task_id)
+
     async def ensure_vnc_token(self, task_id: str, token: str) -> None:
         await self.vnc_manager.register_existing(task_id, token)
+
+    async def mint_admin_vnc_token(self, task_id: str) -> str | None:
+        runtime = self.get_task(task_id)
+        if not runtime:
+            return None
+        if not self._sync_browser_state(runtime):
+            return None
+        return await self.vnc_manager.mint(
+            task_id,
+            target_port=self.settings.vnc_readonly_tcp_port,
+        )
+
+    def validate_vnc_token(self, task_id: str, token: str) -> bool:
+        return self.vnc_manager.lookup_task_id(token) == task_id
 
     @staticmethod
     def _prepare_directories(directories: tuple[Path, ...]) -> None:
