@@ -18,13 +18,12 @@ from .storage import TaskStorage
 
 REASONING_EFFORT_OPTIONS = ["low", "medium", "high"]
 
-# Model capabilities sourced from OpenAI model docs.
 MODEL_REASONING_EFFORTS: dict[str, list[str]] = {
-    "gpt-5.2": [],
+    "gpt-5.2": REASONING_EFFORT_OPTIONS,
     "gpt-5.1": REASONING_EFFORT_OPTIONS,
     "gpt-5": REASONING_EFFORT_OPTIONS,
-    "gpt-5-mini": [],
-    "gpt-5-nano": [],
+    "gpt-5-mini": REASONING_EFFORT_OPTIONS,
+    "gpt-5-nano": REASONING_EFFORT_OPTIONS,
 }
 
 BASE_MODELS = list(MODEL_REASONING_EFFORTS.keys())
