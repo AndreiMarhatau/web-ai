@@ -23,6 +23,7 @@ export function ApiStatusProvider({ children }: { children: ReactNode }) {
   return <ApiStatusContext.Provider value={{ status, setStatus }}>{children}</ApiStatusContext.Provider>
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useApiStatus() {
   const context = useContext(ApiStatusContext)
   if (!context) {

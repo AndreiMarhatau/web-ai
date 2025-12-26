@@ -25,7 +25,7 @@ export interface TaskSummary {
 
 export interface TaskRecord extends TaskSummary {
   instructions: string
-  reasoning_effort?: 'low' | 'medium' | 'high'
+  reasoning_effort?: string
   max_steps: number
   last_error?: string
   assistance?: {
@@ -63,6 +63,7 @@ export interface ConfigDefaults {
   openaiBaseUrl: string | null
   leaveBrowserOpen: boolean
   reasoningEffortOptions?: string[]
+  reasoningEffortOptionsByModel?: Record<string, string[]>
   schedulingEnabled?: boolean
   scheduleCheckSeconds?: number
   nodeId?: string

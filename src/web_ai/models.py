@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Optional, Literal
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -69,7 +69,7 @@ class TaskRecord(BaseModel):
     result_summary: Optional[str] = None
     model_name: str = "gpt-4o-mini"
     temperature: Optional[float] = None
-    reasoning_effort: Optional[Literal["low", "medium", "high"]] = None
+    reasoning_effort: Optional[str] = None
     max_steps: int = 80
     max_actions_per_step: int = 12
     max_input_tokens: int = 128_000
@@ -93,12 +93,32 @@ class PersistedTask(BaseModel):
 class TaskCreatePayload(BaseModel):
     title: str = Field(..., min_length=3, max_length=200)
     instructions: str = Field(..., min_length=5)
-    model: str
+    model: str = Field(..., min_length=1, max_length=200)
     temperature: Optional[float] = Field(default=None, ge=0.0, le=2.0)
     max_steps: int = Field(default=80, ge=1, le=200)
     leave_browser_open: bool = False
-    reasoning_effort: Optional[Literal["low", "medium", "high"]] = None
+    reasoning_effort: Optional[str] = None
     scheduled_for: Optional[datetime] = None
+
+    @field_validator("model", mode="before")
+    @classmethod
+    def _strip_model(cls, value: str) -> str:
+        if isinstance(value, str):
+            value = value.strip()
+        if not value:
+            raise ValueError("model must not be empty.")
+        return value
+
+    @field_validator("reasoning_effort", mode="before")
+    @classmethod
+    def _strip_reasoning_effort(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            value = value.strip()
+        if not value:
+            return None
+        return value
 
     @field_validator("scheduled_for")
     @classmethod
