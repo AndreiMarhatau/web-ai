@@ -16,11 +16,17 @@ from .task_runner import TaskManager, _safe_model_dump
 from .security import TokenVerifier, load_public_keys
 from .storage import TaskStorage
 
-BASE_MODELS = [
-    "gpt-5",
-    "gpt-5-mini",
-    "gpt-5-nano",
-]
+REASONING_EFFORT_OPTIONS = ["low", "medium", "high"]
+
+MODEL_REASONING_EFFORTS: dict[str, list[str]] = {
+    "gpt-5.2": REASONING_EFFORT_OPTIONS,
+    "gpt-5.1": REASONING_EFFORT_OPTIONS,
+    "gpt-5": REASONING_EFFORT_OPTIONS,
+    "gpt-5-mini": REASONING_EFFORT_OPTIONS,
+    "gpt-5-nano": REASONING_EFFORT_OPTIONS,
+}
+
+BASE_MODELS = list(MODEL_REASONING_EFFORTS.keys())
 
 
 class AssistPayload(BaseModel):
@@ -60,6 +66,9 @@ def create_app() -> FastAPI:
     settings = get_settings()
     manager = TaskManager(settings)
     supported_models = sorted(set(BASE_MODELS + [settings.openai_model]))
+    reasoning_effort_options_by_model = dict(MODEL_REASONING_EFFORTS)
+    if settings.openai_model not in reasoning_effort_options_by_model:
+        reasoning_effort_options_by_model[settings.openai_model] = []
 
     verifier: TokenVerifier | None = None
     def _reload_verifier() -> TokenVerifier | None:
@@ -80,6 +89,7 @@ def create_app() -> FastAPI:
     app.state.settings = settings
     app.state.manager = manager
     app.state.supported_models = supported_models
+    app.state.reasoning_effort_options_by_model = reasoning_effort_options_by_model
     app.state.verifier = verifier
     app.state.enroll_token = settings.enroll_token
 
@@ -198,7 +208,11 @@ def create_app() -> FastAPI:
             "supportedModels": app.state.supported_models,
             "openaiBaseUrl": config.openai_base_url,
             "leaveBrowserOpen": False,
-            "reasoningEffortOptions": ["low", "medium", "high"],
+            "reasoningEffortOptions": app.state.reasoning_effort_options_by_model.get(
+                config.openai_model,
+                [],
+            ),
+            "reasoningEffortOptionsByModel": app.state.reasoning_effort_options_by_model,
             "schedulingEnabled": True,
             "scheduleCheckSeconds": config.schedule_check_interval_seconds,
             "nodeId": config.node_id,
@@ -228,8 +242,6 @@ def create_app() -> FastAPI:
         auth=Depends(require_head_auth),
     ):
         manager, settings = ctx
-        if payload.model not in app.state.supported_models:
-            raise HTTPException(status_code=400, detail="Unsupported model requested.")
         try:
             detail = await manager.create_task(payload)
         except ValueError as exc:

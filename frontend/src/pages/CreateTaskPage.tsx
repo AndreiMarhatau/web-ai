@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useNavigate, Link as RouterLink } from 'react-router-dom'
 import { Paper, Stack, Typography, TextField, Button, FormControlLabel, Switch, MenuItem, Skeleton, Chip } from '@mui/material'
@@ -10,13 +10,18 @@ const initialFormState = {
   title: '',
   instructions: '',
   model: '',
+  customModel: '',
   reasoningEffort: '',
+  customReasoningEffort: '',
   maxSteps: 80,
   leaveBrowserOpen: false,
   scheduleEnabled: false,
   scheduledFor: '',
   nodeId: '',
 }
+
+const CUSTOM_MODEL_VALUE = '__custom__'
+const CUSTOM_REASONING_VALUE = '__custom__'
 
 function CreateTaskPage() {
   const { setStatus } = useApiStatus()
@@ -28,17 +33,37 @@ function CreateTaskPage() {
   const [submitting, setSubmitting] = useState(false)
   const navigate = useNavigate()
 
+  const resolveDefaultModel = (data: ConfigDefaults) => {
+    const supported = data.supportedModels || []
+    if (supported.includes(data.model)) {
+      return { model: data.model, customModel: '' }
+    }
+    return { model: CUSTOM_MODEL_VALUE, customModel: data.model }
+  }
+
+  const selectedModel = form.model === CUSTOM_MODEL_VALUE ? form.customModel.trim() : form.model
+  const reasoningOptions = useMemo(() => {
+    return (
+      defaults?.reasoningEffortOptionsByModel?.[selectedModel] ??
+      defaults?.reasoningEffortOptions ??
+      []
+    )
+  }, [defaults?.reasoningEffortOptions, defaults?.reasoningEffortOptionsByModel, selectedModel])
+
   const loadDefaults = useCallback(async () => {
     setLoadingDefaults(true)
     try {
       const data = await api<ConfigDefaults>('/api/config/defaults')
+      const resolvedModel = resolveDefaultModel(data)
       setDefaults(data)
       setForm((current) => ({
         ...current,
-        model: data.model,
+        model: resolvedModel.model,
+        customModel: resolvedModel.customModel,
         maxSteps: data.max_steps,
         leaveBrowserOpen: data.leaveBrowserOpen,
         reasoningEffort: '',
+        customReasoningEffort: '',
         nodeId: data.nodeId || current.nodeId,
       }))
       setStatus('Ready', 'success')
@@ -70,6 +95,18 @@ function CreateTaskPage() {
     loadNodes()
   }, [loadNodes])
 
+  useEffect(() => {
+    if (!form.reasoningEffort || form.reasoningEffort === CUSTOM_REASONING_VALUE) {
+      return
+    }
+    if (reasoningOptions.length === 0) {
+      return
+    }
+    if (!reasoningOptions.includes(form.reasoningEffort)) {
+      setForm((current) => ({ ...current, reasoningEffort: '' }))
+    }
+  }, [form.reasoningEffort, reasoningOptions])
+
   const handleChange = (field: Partial<typeof form>) => {
     setForm((current) => ({ ...current, ...field }))
   }
@@ -78,8 +115,22 @@ function CreateTaskPage() {
     event.preventDefault()
     const title = form.title.trim()
     const instructions = form.instructions.trim()
+    const resolvedModel =
+      form.model === CUSTOM_MODEL_VALUE ? form.customModel.trim() : form.model.trim()
+    const resolvedReasoningEffort =
+      form.reasoningEffort === CUSTOM_REASONING_VALUE
+        ? form.customReasoningEffort.trim()
+        : form.reasoningEffort.trim()
     if (!title || !instructions) {
       alert('Title and instructions are required.')
+      return
+    }
+    if (!resolvedModel) {
+      alert('Select or enter a model.')
+      return
+    }
+    if (form.reasoningEffort === CUSTOM_REASONING_VALUE && !resolvedReasoningEffort) {
+      alert('Enter a custom reasoning effort.')
       return
     }
     if (form.scheduleEnabled && !form.scheduledFor) {
@@ -95,15 +146,15 @@ function CreateTaskPage() {
       const payload: Record<string, unknown> = {
         title,
         instructions,
-        model: form.model,
+        model: resolvedModel,
         max_steps: form.maxSteps,
         leave_browser_open: form.leaveBrowserOpen,
       }
       if (form.nodeId) {
         payload.node_id = form.nodeId
       }
-      if (form.reasoningEffort) {
-        payload.reasoning_effort = form.reasoningEffort
+      if (resolvedReasoningEffort) {
+        payload.reasoning_effort = resolvedReasoningEffort
       }
       if (form.scheduleEnabled && form.scheduledFor) {
         const parsed = new Date(form.scheduledFor)
@@ -221,23 +272,51 @@ function CreateTaskPage() {
                   {model}
                 </MenuItem>
               ))}
+              <MenuItem value={CUSTOM_MODEL_VALUE}>Custom…</MenuItem>
             </TextField>
             <TextField
               select
               label="Reasoning effort"
               name="reasoning_effort"
               value={form.reasoningEffort}
-              onChange={(event) => handleChange({ reasoningEffort: event.target.value })}
+              onChange={(event) =>
+                handleChange({
+                  reasoningEffort: event.target.value,
+                  customReasoningEffort:
+                    event.target.value === CUSTOM_REASONING_VALUE ? form.customReasoningEffort : '',
+                })
+              }
               fullWidth
             >
               <MenuItem value="">Automatic</MenuItem>
-              {defaults?.reasoningEffortOptions?.map((option) => (
+              {reasoningOptions.map((option) => (
                 <MenuItem key={option} value={option}>
                   {option.charAt(0).toUpperCase() + option.slice(1)}
                 </MenuItem>
               ))}
+              <MenuItem value={CUSTOM_REASONING_VALUE}>Custom…</MenuItem>
             </TextField>
           </Stack>
+          {form.model === CUSTOM_MODEL_VALUE && (
+            <TextField
+              label="Custom model"
+              value={form.customModel}
+              onChange={(event) => handleChange({ customModel: event.target.value })}
+              placeholder="e.g. gpt-5.2"
+              fullWidth
+              required
+            />
+          )}
+          {form.reasoningEffort === CUSTOM_REASONING_VALUE && (
+            <TextField
+              label="Custom reasoning effort"
+              value={form.customReasoningEffort}
+              onChange={(event) => handleChange({ customReasoningEffort: event.target.value })}
+              placeholder="e.g. low"
+              fullWidth
+              required
+            />
+          )}
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ md: 'center' }}>
             <TextField
               label="Max steps"

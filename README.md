@@ -36,8 +36,8 @@ Access the UI at `http://localhost:7790`. Tasks will run on the `local` node. Fo
 
 `uv sync --all-groups` installs backend dev dependencies too, so you can run backend tests with `uv run pytest`.
 
-- Supported OpenAI models exposed in the UI: `gpt-5`, `gpt-5-mini`, `gpt-5-nano`.
-- Reasoning effort options: `low`, `medium`, `high`, or automatic (unset).
+- Supported OpenAI models exposed in the UI: `gpt-5.2`, `gpt-5.1`, `gpt-5`, `gpt-5-mini`, `gpt-5-nano` (plus custom entries).
+- Reasoning effort options: `gpt-5.2`, `gpt-5.1`, `gpt-5`, `gpt-5-mini`, and `gpt-5-nano` support configurable effort (`low`, `medium`, `high`, or automatic), with custom values supported.
 - Task data is stored inside the node volume (`/app/data` inside the node container).
 - VNC viewer is served by the node; head returns node-specific VNC URLs secured by per-task tokens.
 - Finished sessions stay available thanks to persisted JSON histories stored on each node.
