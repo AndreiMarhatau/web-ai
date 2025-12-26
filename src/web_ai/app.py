@@ -18,12 +18,13 @@ from .storage import TaskStorage
 
 REASONING_EFFORT_OPTIONS = ["low", "medium", "high"]
 
+# Model capabilities sourced from OpenAI model docs.
 MODEL_REASONING_EFFORTS: dict[str, list[str]] = {
-    "gpt-5.2": REASONING_EFFORT_OPTIONS,
+    "gpt-5.2": [],
     "gpt-5.1": REASONING_EFFORT_OPTIONS,
     "gpt-5": REASONING_EFFORT_OPTIONS,
-    "gpt-5-mini": REASONING_EFFORT_OPTIONS,
-    "gpt-5-nano": REASONING_EFFORT_OPTIONS,
+    "gpt-5-mini": [],
+    "gpt-5-nano": [],
 }
 
 BASE_MODELS = list(MODEL_REASONING_EFFORTS.keys())
@@ -68,7 +69,7 @@ def create_app() -> FastAPI:
     supported_models = sorted(set(BASE_MODELS + [settings.openai_model]))
     reasoning_effort_options_by_model = dict(MODEL_REASONING_EFFORTS)
     if settings.openai_model not in reasoning_effort_options_by_model:
-        reasoning_effort_options_by_model[settings.openai_model] = REASONING_EFFORT_OPTIONS
+        reasoning_effort_options_by_model[settings.openai_model] = []
 
     verifier: TokenVerifier | None = None
     def _reload_verifier() -> TokenVerifier | None:
@@ -210,7 +211,7 @@ def create_app() -> FastAPI:
             "leaveBrowserOpen": False,
             "reasoningEffortOptions": app.state.reasoning_effort_options_by_model.get(
                 config.openai_model,
-                REASONING_EFFORT_OPTIONS,
+                [],
             ),
             "reasoningEffortOptionsByModel": app.state.reasoning_effort_options_by_model,
             "schedulingEnabled": True,
