@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import html
+import json
 from pathlib import Path
 from typing import Any
 from datetime import datetime
@@ -12,6 +14,7 @@ from pydantic import BaseModel, field_validator
 
 from .config import Settings, get_settings
 from .models import TaskCreatePayload
+from .models import TaskStatus
 from .task_runner import TaskManager, _safe_model_dump
 from .security import TokenVerifier, load_public_keys
 from .storage import TaskStorage
@@ -25,6 +28,10 @@ BASE_MODELS = [
 
 class AssistPayload(BaseModel):
     message: str
+
+
+class AssistResponsePayload(BaseModel):
+    message: str | None = None
 
 
 class ContinuePayload(BaseModel):
@@ -214,8 +221,10 @@ def create_app() -> FastAPI:
         return [summary.model_dump(mode="json") for summary in manager.list_tasks()]
 
     def serialize_detail(detail: "TaskDetail") -> dict[str, Any]:
+        record_payload = _safe_model_dump(detail.record)
+        record_payload.pop("vnc_token", None)
         return {
-            "record": _safe_model_dump(detail.record),
+            "record": record_payload,
             "steps": [_safe_model_dump(step) for step in detail.steps],
             "chat_history": [_safe_model_dump(msg) for msg in detail.chat_history],
             "vnc_launch_url": detail.vnc_launch_url,
@@ -349,29 +358,221 @@ def create_app() -> FastAPI:
 
     @app.get("/tasks/{task_id}/vnc", response_class=HTMLResponse)
     async def open_vnc(task_id: str, token: str, ctx: tuple[TaskManager, Settings] = Depends(get_ctx)):
+        return await open_assist(task_id, token, ctx)
+
+    def _render_assist_page(
+        *,
+        task_id: str,
+        question: str | None,
+        novnc_url: str | None,
+        token: str,
+        show_notice: str | None = None,
+    ) -> str:
+        question_text = html.escape(
+            question or "The agent is waiting for your input."
+        )
+        notice_text = html.escape(show_notice) if show_notice else ""
+        notice_html = f"<p class=\"notice\">{notice_text}</p>" if show_notice else ""
+        frame_html = (
+            f"<iframe src=\"{html.escape(novnc_url, quote=True)}\" title=\"VNC\" allow=\"clipboard-read; clipboard-write\"></iframe>"
+            if novnc_url
+            else "<div class=\"placeholder\">VNC is unavailable for this task.</div>"
+        )
+        return f"""<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Assist task {task_id}</title>
+    <style>
+      :root {{
+        color-scheme: light;
+        font-family: "Inter", "Segoe UI", sans-serif;
+        background: #f3f5f7;
+        color: #1d2432;
+      }}
+      body {{
+        margin: 0;
+        padding: 24px;
+      }}
+      .shell {{
+        max-width: 1200px;
+        margin: 0 auto;
+        display: grid;
+        gap: 16px;
+      }}
+      header {{
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }}
+      header h1 {{
+        margin: 0;
+        font-size: 24px;
+      }}
+      .notice {{
+        background: #fff2cc;
+        border: 1px solid #f3d775;
+        padding: 10px 12px;
+        border-radius: 10px;
+        margin: 0;
+      }}
+      .frame {{
+        background: #ffffff;
+        border-radius: 16px;
+        padding: 12px;
+        border: 1px solid #e3e6ea;
+      }}
+      iframe {{
+        width: 100%;
+        min-height: 520px;
+        border: none;
+        border-radius: 12px;
+        background: #111827;
+      }}
+      .placeholder {{
+        padding: 120px 16px;
+        text-align: center;
+        color: #6b7280;
+        border-radius: 12px;
+        border: 2px dashed #d1d5db;
+      }}
+      .controls {{
+        background: #ffffff;
+        border-radius: 16px;
+        padding: 16px;
+        border: 1px solid #e3e6ea;
+        display: grid;
+        gap: 12px;
+      }}
+      textarea {{
+        width: 100%;
+        min-height: 88px;
+        padding: 10px 12px;
+        font-size: 14px;
+        border-radius: 10px;
+        border: 1px solid #d0d5dd;
+        resize: vertical;
+      }}
+      button {{
+        background: #1d4ed8;
+        color: white;
+        border: none;
+        padding: 12px 16px;
+        border-radius: 10px;
+        font-size: 14px;
+        cursor: pointer;
+      }}
+      button:disabled {{
+        opacity: 0.6;
+        cursor: not-allowed;
+      }}
+      .status {{
+        font-size: 13px;
+        color: #475467;
+      }}
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <header>
+        <h1>Assist task {task_id}</h1>
+        <p>{question_text}</p>
+        {notice_html}
+      </header>
+      <section class="frame">
+        {frame_html}
+      </section>
+      <section class="controls">
+        <label for="note">Optional note for the agent</label>
+        <textarea id="note" placeholder="Describe what you did or confirm it is done."></textarea>
+        <button id="continue-button" type="button">Continue task</button>
+        <div id="status" class="status"></div>
+      </section>
+    </div>
+    <script>
+      const continueButton = document.getElementById("continue-button");
+      const noteInput = document.getElementById("note");
+      const statusLabel = document.getElementById("status");
+      continueButton.addEventListener("click", async () => {{
+        continueButton.disabled = true;
+        statusLabel.textContent = "Sending response...";
+        try {{
+          const message = noteInput.value.trim() || "done";
+          const respondUrl = {json.dumps(f"/tasks/{task_id}/assist/respond?token=")} + {json.dumps(token)};
+          const response = await fetch(respondUrl, {{
+            method: "POST",
+            headers: {{ "Content-Type": "application/json" }},
+            body: JSON.stringify({{ message }}),
+          }});
+          if (!response.ok) {{
+            const errorText = await response.text();
+            throw new Error(errorText || "Failed to continue task.");
+          }}
+          statusLabel.textContent = "Response sent. You can close this window.";
+        }} catch (error) {{
+          statusLabel.textContent = error.message || "Failed to continue task.";
+          continueButton.disabled = false;
+        }}
+      }});
+    </script>
+  </body>
+</html>
+"""
+
+    @app.get("/tasks/{task_id}/assist", response_class=HTMLResponse)
+    async def open_assist(task_id: str, token: str, ctx: tuple[TaskManager, Settings] = Depends(get_ctx)):
         manager, config = ctx
         detail = manager.get_task_detail(task_id)
         if not detail or detail.record.vnc_token != token:
-            raise HTTPException(status_code=403, detail="Invalid VNC token")
-        await manager.ensure_vnc_token(detail.record.id, detail.record.vnc_token)
+            raise HTTPException(status_code=403, detail="Invalid assist token")
+        if (
+            detail.record.status != TaskStatus.waiting_for_input
+            or not detail.record.needs_attention
+        ):
+            html = _render_assist_page(
+                task_id=task_id,
+                question=detail.record.assistance.question if detail.record.assistance else None,
+                novnc_url=None,
+                token=token,
+                show_notice="This task is not waiting for input right now.",
+            )
+            return HTMLResponse(content=html, status_code=409)
 
+        await manager.ensure_vnc_token(detail.record.id, detail.record.vnc_token)
         novnc_url = (
             f"{config.vnc_scheme}://{config.vnc_public_host}:{config.vnc_http_port}/"
             f"vnc.html?path=websockify?token={token}"
         )
-        html = f"""
-        <html>
-            <head>
-                <title>VNC for task {task_id}</title>
-                <meta http-equiv="refresh" content="0; url={novnc_url}">
-            </head>
-            <body>
-                <p>Redirecting to secure VNC session...</p>
-                <p>If you are not redirected, <a href="{novnc_url}">click here</a>.</p>
-            </body>
-        </html>
-        """
+        html = _render_assist_page(
+            task_id=task_id,
+            question=detail.record.assistance.question if detail.record.assistance else None,
+            novnc_url=novnc_url,
+            token=token,
+        )
         return HTMLResponse(content=html)
+
+    @app.post("/tasks/{task_id}/assist/respond")
+    async def respond_assist(
+        task_id: str,
+        token: str,
+        payload: AssistResponsePayload = Body(...),
+        ctx: tuple[TaskManager, Settings] = Depends(get_ctx),
+    ):
+        manager, _ = ctx
+        detail = manager.get_task_detail(task_id)
+        if not detail or detail.record.vnc_token != token:
+            raise HTTPException(status_code=403, detail="Invalid assist token")
+        if (
+            detail.record.status != TaskStatus.waiting_for_input
+            or not detail.record.needs_attention
+        ):
+            raise HTTPException(status_code=409, detail="Task not awaiting assistance.")
+        message = (payload.message or "").strip() or "done"
+        detail = await manager.submit_assistance(task_id, message)
+        if not detail:
+            raise HTTPException(status_code=404, detail="Task not awaiting assistance.")
+        return {"ok": True}
 
     if FRONTEND_DIST.exists():
         app.mount("/", StaticFiles(directory=str(FRONTEND_DIST), html=True), name="frontend")
