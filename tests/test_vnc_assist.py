@@ -74,3 +74,43 @@ async def test_vnc_link_and_token_activation(tmp_path, monkeypatch):
         assert manager.vnc_manager.lookup(task_id) is None
     finally:
         await manager.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_assist_callback_handles_awaitable(tmp_path, monkeypatch):
+    settings = Settings(
+        base_data_dir=tmp_path,
+        openai_api_key="test-key",
+        openai_model="gpt-5",
+    )
+    settings.base_data_dir = tmp_path
+    settings.ensure_directories()
+    manager = TaskManager(settings)
+    await manager.startup()
+
+    try:
+        async def fake_enqueue(runtime, clear_schedule: bool = False):
+            runtime.record.status = TaskStatus.pending
+
+        monkeypatch.setattr(manager, "_enqueue_run", fake_enqueue)
+
+        payload = TaskCreatePayload(
+            title="Awaitable assist",
+            instructions="Need assistance",
+            model=settings.openai_model,
+            max_steps=settings.max_steps,
+            leave_browser_open=False,
+        )
+        detail = await manager.create_task(payload)
+        runtime = manager.get_task(detail.record.id)
+        assert runtime is not None
+
+        result_task = asyncio.create_task(
+            manager._handle_assistance_request(runtime, "Do something")
+        )
+        await asyncio.sleep(0)
+        await manager.submit_assistance(detail.record.id, "done")
+        result = await asyncio.wait_for(result_task, timeout=2)
+        assert result["response"] == "done"
+    finally:
+        await manager.shutdown()
