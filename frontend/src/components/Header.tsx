@@ -60,13 +60,6 @@ function Header() {
                   </Button>
                 )}
               </NavLink>
-              <NavLink to="/tasks/new" style={{ textDecoration: 'none' }}>
-                {({ isActive }) => (
-                  <Button color={isActive ? 'primary' : 'inherit'} variant={isActive ? 'contained' : 'text'}>
-                    New task
-                  </Button>
-                )}
-              </NavLink>
             </Stack>
             <Typography variant="caption" color="text.secondary">
               Live data refreshes every 5 seconds.
