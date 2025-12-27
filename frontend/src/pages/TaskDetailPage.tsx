@@ -344,9 +344,10 @@ function TaskDetailPage() {
             display: 'grid',
             gap: 3,
             gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 360px) minmax(0, 1fr)' },
+            minWidth: 0,
           }}
         >
-          <Box>
+          <Box sx={{ minWidth: 0 }}>
             <Stack spacing={2}>
               <Card>
                 <CardHeader title={record?.title} subheader={`Model: ${record?.model_name}`} />
@@ -363,21 +364,27 @@ function TaskDetailPage() {
                     </Stack>
                     <Divider />
                     <Stack spacing={1}>
-                      <Stack direction="row" justifyContent="space-between">
+                      <Stack direction="row" justifyContent="space-between" sx={{ gap: 1, flexWrap: 'wrap' }}>
                         <Typography variant="caption" color="text.secondary">Steps</Typography>
-                        <Typography variant="subtitle2">{record?.step_count}/{record?.max_steps}</Typography>
+                        <Typography variant="subtitle2" sx={{ overflowWrap: 'anywhere' }}>
+                          {record?.step_count}/{record?.max_steps}
+                        </Typography>
                       </Stack>
-                      <Stack direction="row" justifyContent="space-between">
+                      <Stack direction="row" justifyContent="space-between" sx={{ gap: 1, flexWrap: 'wrap' }}>
                         <Typography variant="caption" color="text.secondary">Created</Typography>
-                        <Typography variant="subtitle2">{formatDate(record?.created_at)}</Typography>
+                        <Typography variant="subtitle2" sx={{ overflowWrap: 'anywhere' }}>
+                          {formatDate(record?.created_at)}
+                        </Typography>
                       </Stack>
-                      <Stack direction="row" justifyContent="space-between">
+                      <Stack direction="row" justifyContent="space-between" sx={{ gap: 1, flexWrap: 'wrap' }}>
                         <Typography variant="caption" color="text.secondary">Updated</Typography>
-                        <Typography variant="subtitle2">{formatDate(record?.updated_at)}</Typography>
+                        <Typography variant="subtitle2" sx={{ overflowWrap: 'anywhere' }}>
+                          {formatDate(record?.updated_at)}
+                        </Typography>
                       </Stack>
-                      <Stack direction="row" justifyContent="space-between">
+                      <Stack direction="row" justifyContent="space-between" sx={{ gap: 1, flexWrap: 'wrap' }}>
                         <Typography variant="caption" color="text.secondary">Scheduled</Typography>
-                        <Typography variant="subtitle2">
+                        <Typography variant="subtitle2" sx={{ overflowWrap: 'anywhere' }}>
                           {record?.scheduled_for ? formatDate(record?.scheduled_for) : 'Not scheduled'}
                         </Typography>
                       </Stack>
@@ -479,7 +486,7 @@ function TaskDetailPage() {
             </Stack>
           </Box>
 
-          <Box>
+          <Box sx={{ minWidth: 0 }}>
             <Stack spacing={2}>
               <Card>
                 <CardHeader title="Task feed" subheader="Progress summaries and conversation context." />
@@ -501,19 +508,27 @@ function TaskDetailPage() {
                               <Stack direction="row" justifyContent="space-between" alignItems="center">
                                 <Chip label={`Step ${step.step_number}`} size="small" color="primary" />
                                 {step.url && (
-                                  <Typography variant="caption" color="text.secondary">
+                                  <Typography
+                                    variant="caption"
+                                    color="text.secondary"
+                                    sx={{ maxWidth: '70%', overflowWrap: 'anywhere' }}
+                                  >
                                     {step.url}
                                   </Typography>
                                 )}
                               </Stack>
                               {step.title && (
-                                <Typography variant="subtitle1">{step.title}</Typography>
+                                <Typography variant="subtitle1" sx={{ overflowWrap: 'anywhere' }}>
+                                  {step.title}
+                                </Typography>
                               )}
                               {step.summary_html && (
                                 <Box
                                   sx={{
                                     '& p': { margin: 0 },
                                     '& a': { color: 'primary.main' },
+                                    overflowWrap: 'anywhere',
+                                    wordBreak: 'break-word',
                                   }}
                                   dangerouslySetInnerHTML={{ __html: step.summary_html }}
                                 />
@@ -539,7 +554,9 @@ function TaskDetailPage() {
                           <Typography variant="caption" color="text.secondary" sx={{ letterSpacing: '0.2em' }}>
                             {msg.role}
                           </Typography>
-                          <Typography variant="body2">{msg.content}</Typography>
+                          <Typography variant="body2" sx={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                            {msg.content}
+                          </Typography>
                         </Paper>
                       ))}
                     </Stack>

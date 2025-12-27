@@ -1,4 +1,5 @@
 import { AppBar, Toolbar, Typography, Stack, Button, Chip, Container, Box, Paper } from '@mui/material'
+import { alpha, type Theme } from '@mui/material/styles'
 import { NavLink } from 'react-router-dom'
 import { useApiStatus } from '../contexts/apiStatus'
 
@@ -42,7 +43,8 @@ function Header() {
               justifyContent: 'space-between',
               gap: 2,
               flexWrap: 'wrap',
-              backgroundColor: 'rgba(255, 253, 249, 0.8)',
+              backgroundColor: (theme: Theme) =>
+                alpha(theme.palette.background.paper, theme.palette.mode === 'dark' ? 0.78 : 0.92),
             }}
           >
             <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
