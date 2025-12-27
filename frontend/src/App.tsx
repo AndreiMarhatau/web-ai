@@ -8,16 +8,10 @@ import TaskDetailPage from './pages/TaskDetailPage'
 import NodesPage from './pages/NodesPage'
 import { ApiStatusProvider } from './contexts/apiStatus'
 
-const THEME_STORAGE_KEY = 'webai-theme'
-
 function App() {
   const [mode, setMode] = useState<'light' | 'dark'>(() => {
     if (typeof window === 'undefined') {
       return 'light'
-    }
-    const saved = window.localStorage.getItem(THEME_STORAGE_KEY)
-    if (saved === 'light' || saved === 'dark') {
-      return saved
     }
     return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
   })
@@ -26,9 +20,25 @@ function App() {
     if (typeof window === 'undefined') {
       return
     }
-    window.localStorage.setItem(THEME_STORAGE_KEY, mode)
     document.documentElement.dataset.theme = mode
   }, [mode])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+    const updateMode = () => {
+      setMode(mediaQuery.matches ? 'dark' : 'light')
+    }
+    updateMode()
+    if (mediaQuery.addEventListener) {
+      mediaQuery.addEventListener('change', updateMode)
+      return () => mediaQuery.removeEventListener('change', updateMode)
+    }
+    mediaQuery.addListener(updateMode)
+    return () => mediaQuery.removeListener(updateMode)
+  }, [])
 
   const theme = useMemo(() => {
     const isDark = mode === 'dark'
@@ -153,7 +163,7 @@ function App() {
             }}
           >
             <Box sx={{ position: 'relative', zIndex: 1 }}>
-              <Header mode={mode} onToggleMode={() => setMode((prev) => (prev === 'dark' ? 'light' : 'dark'))} />
+              <Header />
               <Container maxWidth="lg" sx={{ py: { xs: 4, md: 6 } }}>
                 <Routes>
                   <Route path="/" element={<TasksPage />} />
