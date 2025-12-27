@@ -54,6 +54,7 @@ class Settings(BaseSettings):
         default=5903, validation_alias="VNC_READONLY_TCP_PORT"
     )
     vnc_public_host: str = Field(default="localhost", validation_alias="VNC_PUBLIC_HOST")
+    vnc_target_host: str = Field(default="localhost", validation_alias="VNC_TARGET_HOST")
     vnc_token_file: Optional[Path] = Field(default=None, validation_alias="VNC_TOKEN_FILE")
     vnc_scheme: Literal["http", "https"] = "http"
 

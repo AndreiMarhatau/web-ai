@@ -41,6 +41,7 @@ Access the UI at `http://localhost:7790`. Tasks will run on the `local` node. Fo
 - Task data is stored inside the node volume (`/app/data` inside the node container).
 - VNC viewer is served by the node; head returns node-specific VNC URLs secured by per-task tokens.
 - Finished sessions stay available thanks to persisted JSON histories stored on each node.
+- `VNC_PUBLIC_HOST` controls the host embedded in VNC URLs; `VNC_TARGET_HOST` controls where the node's websockify proxy connects (defaults to `localhost`).
 
 You can also build the full service via Docker Compose (head + one node by default):
 

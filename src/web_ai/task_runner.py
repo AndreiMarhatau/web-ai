@@ -199,7 +199,7 @@ class TaskManager:
         self.storage = TaskStorage(self.settings.tasks_dir)
         self.vnc_manager = VNCManager(
             token_file=self.settings.vnc_token_file,
-            target_host=self.settings.vnc_public_host,
+            target_host=self.settings.vnc_target_host,
             target_port=self.settings.vnc_tcp_port,
         )
         self._tasks: dict[str, TaskRuntime] = {}
