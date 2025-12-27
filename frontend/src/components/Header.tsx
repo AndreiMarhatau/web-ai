@@ -1,8 +1,15 @@
-import { AppBar, Toolbar, Typography, Stack, Button, Chip, Container, Box, Paper } from '@mui/material'
+import { AppBar, Toolbar, Typography, Stack, Button, Chip, Container, Box, Paper, IconButton, Tooltip } from '@mui/material'
+import LightModeRoundedIcon from '@mui/icons-material/LightModeRounded'
+import DarkModeRoundedIcon from '@mui/icons-material/DarkModeRounded'
 import { NavLink } from 'react-router-dom'
 import { useApiStatus } from '../contexts/apiStatus'
 
-function Header() {
+interface HeaderProps {
+  mode: 'light' | 'dark'
+  onToggleMode: () => void
+}
+
+function Header({ mode, onToggleMode }: HeaderProps) {
   const { status } = useApiStatus()
 
   const chipColor =
@@ -25,6 +32,11 @@ function Header() {
               </Typography>
             </Box>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ xs: 'flex-start', sm: 'center' }}>
+              <Tooltip title={mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
+                <IconButton onClick={onToggleMode} color="inherit" aria-label="Toggle color mode">
+                  {mode === 'dark' ? <LightModeRoundedIcon /> : <DarkModeRoundedIcon />}
+                </IconButton>
+              </Tooltip>
               <Chip label={status.text} color={chipColor} variant="outlined" sx={{ textTransform: 'uppercase', letterSpacing: '0.18em' }} />
               <Button variant="contained" component={NavLink} to="/tasks/new">
                 Launch task
@@ -57,13 +69,6 @@ function Header() {
                 {({ isActive }) => (
                   <Button color={isActive ? 'primary' : 'inherit'} variant={isActive ? 'contained' : 'text'}>
                     Nodes
-                  </Button>
-                )}
-              </NavLink>
-              <NavLink to="/tasks/new" style={{ textDecoration: 'none' }}>
-                {({ isActive }) => (
-                  <Button color={isActive ? 'primary' : 'inherit'} variant={isActive ? 'contained' : 'text'}>
-                    New task
                   </Button>
                 )}
               </NavLink>
