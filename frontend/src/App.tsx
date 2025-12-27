@@ -9,33 +9,73 @@ import { ApiStatusProvider } from './contexts/apiStatus'
 
 let theme = createTheme({
   palette: {
-    mode: 'dark',
+    mode: 'light',
     primary: {
-      main: '#a855f7',
+      main: '#0f766e',
     },
     secondary: {
-      main: '#06b6d4',
+      main: '#f97316',
     },
     background: {
-      default: '#05060d',
-      paper: 'rgba(15,18,30,0.92)',
+      default: '#f6f1ea',
+      paper: '#fffdf9',
     },
+    text: {
+      primary: '#1f2933',
+      secondary: '#5d6b6f',
+    },
+    divider: 'rgba(15, 23, 42, 0.12)',
   },
   typography: {
-    fontFamily: '"Space Grotesk", "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    h1: { fontWeight: 600 },
-    h2: { fontWeight: 600 },
+    fontFamily: '"Sora", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    h1: { fontWeight: 600, fontFamily: '"Fraunces", "Sora", serif' },
+    h2: { fontWeight: 600, fontFamily: '"Fraunces", "Sora", serif' },
+    h3: { fontWeight: 600, fontFamily: '"Fraunces", "Sora", serif' },
+    h4: { fontWeight: 600, fontFamily: '"Fraunces", "Sora", serif' },
+    h5: { fontWeight: 600 },
   },
   shape: {
-    borderRadius: 18,
+    borderRadius: 16,
   },
   components: {
+    MuiAppBar: {
+      styleOverrides: {
+        root: {
+          borderBottom: '1px solid rgba(15, 23, 42, 0.08)',
+          backdropFilter: 'blur(8px)',
+          backgroundColor: 'rgba(246, 241, 234, 0.78)',
+        },
+      },
+    },
     MuiPaper: {
       styleOverrides: {
         root: {
-          border: '1px solid rgba(255,255,255,0.06)',
-          backdropFilter: 'blur(16px)',
-          boxShadow: '0 25px 70px rgba(2,6,23,0.65)',
+          border: '1px solid rgba(15, 23, 42, 0.08)',
+          boxShadow: '0 18px 40px rgba(15, 23, 42, 0.08)',
+        },
+      },
+    },
+    MuiCard: {
+      styleOverrides: {
+        root: {
+          border: '1px solid rgba(15, 23, 42, 0.08)',
+          boxShadow: '0 18px 40px rgba(15, 23, 42, 0.08)',
+        },
+      },
+    },
+    MuiButton: {
+      styleOverrides: {
+        root: {
+          borderRadius: 999,
+          textTransform: 'none',
+          fontWeight: 600,
+        },
+      },
+    },
+    MuiChip: {
+      styleOverrides: {
+        root: {
+          fontWeight: 600,
         },
       },
     },
@@ -53,19 +93,43 @@ function App() {
           <Box
             sx={{
               minHeight: '100vh',
-              background: 'radial-gradient(circle at 10% 20%, rgba(14,165,233,0.15), transparent 45%), radial-gradient(circle at 80% 0%, rgba(167,139,250,0.25), transparent 40%), #05060d',
+              background: 'linear-gradient(135deg, #f6f1ea 0%, #f7efe2 40%, #eef4f6 100%)',
+              position: 'relative',
+              overflow: 'hidden',
+              '&::before': {
+                content: '""',
+                position: 'absolute',
+                width: 520,
+                height: 520,
+                borderRadius: '50%',
+                background: 'radial-gradient(circle, rgba(15, 118, 110, 0.18), transparent 70%)',
+                top: -180,
+                right: -160,
+              },
+              '&::after': {
+                content: '""',
+                position: 'absolute',
+                width: 420,
+                height: 420,
+                borderRadius: '30%',
+                background: 'radial-gradient(circle, rgba(249, 115, 22, 0.2), transparent 70%)',
+                bottom: -160,
+                left: -120,
+              },
             }}
           >
-            <Header />
-            <Container maxWidth="lg" sx={{ py: { xs: 4, md: 6 } }}>
-              <Routes>
-                <Route path="/" element={<TasksPage />} />
-                <Route path="/tasks/new" element={<CreateTaskPage />} />
-                <Route path="/tasks/:taskId" element={<TaskDetailPage />} />
-                <Route path="/nodes" element={<NodesPage />} />
-                <Route path="*" element={<TasksPage />} />
-              </Routes>
-            </Container>
+            <Box sx={{ position: 'relative', zIndex: 1 }}>
+              <Header />
+              <Container maxWidth="lg" sx={{ py: { xs: 4, md: 6 } }}>
+                <Routes>
+                  <Route path="/" element={<TasksPage />} />
+                  <Route path="/tasks/new" element={<CreateTaskPage />} />
+                  <Route path="/tasks/:taskId" element={<TaskDetailPage />} />
+                  <Route path="/nodes" element={<NodesPage />} />
+                  <Route path="*" element={<TasksPage />} />
+                </Routes>
+              </Container>
+            </Box>
           </Box>
         </BrowserRouter>
       </ApiStatusProvider>

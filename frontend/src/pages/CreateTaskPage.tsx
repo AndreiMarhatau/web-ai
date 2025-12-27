@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useNavigate, Link as RouterLink } from 'react-router-dom'
-import { Paper, Stack, Typography, TextField, Button, FormControlLabel, Switch, MenuItem, Skeleton, Chip } from '@mui/material'
+import { Paper, Stack, Typography, TextField, Button, FormControlLabel, Switch, MenuItem, Skeleton, Chip, Card, CardHeader, CardContent, Alert, Box } from '@mui/material'
 import { api } from '../api'
 import type { ConfigDefaults, NodeInfo, NodesResponse, TaskDetail } from '../types'
 import { useApiStatus } from '../contexts/apiStatus'
@@ -31,6 +31,7 @@ function CreateTaskPage() {
   const [form, setForm] = useState(initialFormState)
   const [loadingDefaults, setLoadingDefaults] = useState(true)
   const [submitting, setSubmitting] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
   const navigate = useNavigate()
 
   const resolveDefaultModel = (data: ConfigDefaults) => {
@@ -109,10 +110,12 @@ function CreateTaskPage() {
 
   const handleChange = (field: Partial<typeof form>) => {
     setForm((current) => ({ ...current, ...field }))
+    setFormError(null)
   }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    setFormError(null)
     const title = form.title.trim()
     const instructions = form.instructions.trim()
     const resolvedModel =
@@ -122,23 +125,23 @@ function CreateTaskPage() {
         ? form.customReasoningEffort.trim()
         : form.reasoningEffort.trim()
     if (!title || !instructions) {
-      alert('Title and instructions are required.')
+      setFormError('Title and instructions are required.')
       return
     }
     if (!resolvedModel) {
-      alert('Select or enter a model.')
+      setFormError('Select or enter a model.')
       return
     }
     if (form.reasoningEffort === CUSTOM_REASONING_VALUE && !resolvedReasoningEffort) {
-      alert('Enter a custom reasoning effort.')
+      setFormError('Enter a custom reasoning effort.')
       return
     }
     if (form.scheduleEnabled && !form.scheduledFor) {
-      alert('Choose when the task should start.')
+      setFormError('Choose when the task should start.')
       return
     }
     if (nodes.length > 1 && !form.nodeId) {
-      alert('Select a node to run on.')
+      setFormError('Select a node to run on.')
       return
     }
     setSubmitting(true)
@@ -175,7 +178,7 @@ function CreateTaskPage() {
     } catch (err) {
       const message = (err as Error).message
       setStatus(message, 'danger')
-      alert(message)
+      setFormError(message)
     } finally {
       setSubmitting(false)
     }
@@ -183,159 +186,218 @@ function CreateTaskPage() {
 
   return (
     <Paper sx={{ p: { xs: 3, md: 4 } }}>
-      <Stack spacing={2} mb={2}>
-        <Typography variant="h5">Launch task</Typography>
+      <Stack spacing={2} mb={3}>
+        <Typography variant="h5">Launch a new task</Typography>
         <Typography variant="body2" color="text.secondary">
-          Define the goal, instructions, and model configuration.
+          Set the mission, configure the model, and pick where it runs.
         </Typography>
       </Stack>
       {loadingDefaults && !defaults ? (
-        <Skeleton variant="rounded" height={220} />
+        <Skeleton variant="rounded" height={320} />
       ) : (
         <Stack component="form" onSubmit={handleSubmit} spacing={3}>
-          <TextField
-            label="Title"
-            value={form.title}
-            onChange={(event) => handleChange({ title: event.target.value })}
-            placeholder="Summarize what you want automated"
-            required
-            fullWidth
-          />
-          <TextField
-            label="Instructions"
-            value={form.instructions}
-            onChange={(event) => handleChange({ instructions: event.target.value })}
-            placeholder="Describe what the agent should accomplish"
-            required
-            fullWidth
-            multiline
-            minRows={4}
-          />
-          <Stack spacing={1}>
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={form.scheduleEnabled}
-                  onChange={(event) => handleChange({ scheduleEnabled: event.target.checked })}
+          {formError && <Alert severity="error">{formError}</Alert>}
+          <Card>
+            <CardHeader title="Task basics" subheader="Define what should happen and how it should be described." />
+            <CardContent>
+              <Stack spacing={2}>
+                <TextField
+                  label="Title"
+                  value={form.title}
+                  onChange={(event) => handleChange({ title: event.target.value })}
+                  placeholder="Summarize what you want automated"
+                  required
+                  fullWidth
                 />
-              }
-              label="Schedule start time"
-            />
-            {form.scheduleEnabled && (
-              <TextField
-                type="datetime-local"
-                label="Start time"
-                value={form.scheduledFor}
-                onChange={(event) => handleChange({ scheduledFor: event.target.value })}
-                fullWidth
-                required
-              />
-            )}
-          </Stack>
-          {nodes.length > 1 && (
-            <TextField
-              select
-              label="Node"
-              name="node"
-              value={form.nodeId}
-              onChange={(event) => handleChange({ nodeId: event.target.value })}
-              fullWidth
-              required
-              helperText="Choose where the task should run"
-            >
-              {nodes.map((node) => (
-                <MenuItem key={node.id} value={node.id}>
-                  {node.name || node.id}
-                </MenuItem>
-              ))}
-            </TextField>
-          )}
-          {nodes.length === 1 && (
-            <Stack direction="row" spacing={1} alignItems="center">
-              <Chip label={`Node: ${nodes[0].name || nodes[0].id}`} size="small" />
-              <Typography variant="body2" color="text.secondary">
-                Tasks will run on this node.
-              </Typography>
-            </Stack>
-          )}
-          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
-            <TextField
-              select
-              label="OpenAI model"
-              name="model"
-              value={form.model}
-              onChange={(event) => handleChange({ model: event.target.value })}
-              fullWidth
-            >
-              {defaults?.supportedModels.map((model) => (
-                <MenuItem key={model} value={model}>
-                  {model}
-                </MenuItem>
-              ))}
-              <MenuItem value={CUSTOM_MODEL_VALUE}>Custom…</MenuItem>
-            </TextField>
-            <TextField
-              select
-              label="Reasoning effort"
-              name="reasoning_effort"
-              value={form.reasoningEffort}
-              onChange={(event) =>
-                handleChange({
-                  reasoningEffort: event.target.value,
-                  customReasoningEffort:
-                    event.target.value === CUSTOM_REASONING_VALUE ? form.customReasoningEffort : '',
-                })
-              }
-              fullWidth
-            >
-              <MenuItem value="">Automatic</MenuItem>
-              {reasoningOptions.map((option) => (
-                <MenuItem key={option} value={option}>
-                  {option.charAt(0).toUpperCase() + option.slice(1)}
-                </MenuItem>
-              ))}
-              <MenuItem value={CUSTOM_REASONING_VALUE}>Custom…</MenuItem>
-            </TextField>
-          </Stack>
-          {form.model === CUSTOM_MODEL_VALUE && (
-            <TextField
-              label="Custom model"
-              value={form.customModel}
-              onChange={(event) => handleChange({ customModel: event.target.value })}
-              placeholder="e.g. gpt-5.2"
-              fullWidth
-              required
-            />
-          )}
-          {form.reasoningEffort === CUSTOM_REASONING_VALUE && (
-            <TextField
-              label="Custom reasoning effort"
-              value={form.customReasoningEffort}
-              onChange={(event) => handleChange({ customReasoningEffort: event.target.value })}
-              placeholder="e.g. low"
-              fullWidth
-              required
-            />
-          )}
-          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ md: 'center' }}>
-            <TextField
-              label="Max steps"
-              type="number"
-              inputProps={{ min: 1, max: 200 }}
-              value={form.maxSteps}
-              onChange={(event) => handleChange({ maxSteps: Number(event.target.value) })}
-              fullWidth
-            />
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={form.leaveBrowserOpen}
-                  onChange={(event) => handleChange({ leaveBrowserOpen: event.target.checked })}
+                <TextField
+                  label="Instructions"
+                  value={form.instructions}
+                  onChange={(event) => handleChange({ instructions: event.target.value })}
+                  placeholder="Describe what the agent should accomplish"
+                  required
+                  fullWidth
+                  multiline
+                  minRows={4}
                 />
-              }
-              label="Keep browser open after completion"
-            />
-          </Stack>
+              </Stack>
+            </CardContent>
+          </Card>
+
+          <Box
+            sx={{
+              display: 'grid',
+              gap: 2,
+              gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' },
+            }}
+          >
+            <Card>
+              <CardHeader title="Schedule" subheader="Optional start time for this run." />
+              <CardContent>
+                <Stack spacing={1}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={form.scheduleEnabled}
+                        onChange={(event) => handleChange({ scheduleEnabled: event.target.checked })}
+                      />
+                    }
+                    label="Schedule start time"
+                  />
+                  {form.scheduleEnabled && (
+                    <TextField
+                      type="datetime-local"
+                      label="Start time"
+                      value={form.scheduledFor}
+                      onChange={(event) => handleChange({ scheduledFor: event.target.value })}
+                      fullWidth
+                      required
+                    />
+                  )}
+                </Stack>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader title="Execution" subheader="Control how long the agent can run." />
+              <CardContent>
+                <Stack spacing={2}>
+                  <TextField
+                    label="Max steps"
+                    type="number"
+                    inputProps={{ min: 1, max: 200 }}
+                    value={form.maxSteps}
+                    onChange={(event) => handleChange({ maxSteps: Number(event.target.value) })}
+                    fullWidth
+                  />
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={form.leaveBrowserOpen}
+                        onChange={(event) => handleChange({ leaveBrowserOpen: event.target.checked })}
+                      />
+                    }
+                    label="Keep browser open after completion"
+                  />
+                </Stack>
+              </CardContent>
+            </Card>
+          </Box>
+
+          <Card>
+            <CardHeader title="Model configuration" subheader="Choose a model and its reasoning budget." />
+            <CardContent>
+              <Stack spacing={2}>
+                <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+                  <TextField
+                    select
+                    label="OpenAI model"
+                    name="model"
+                    value={form.model}
+                    onChange={(event) => handleChange({ model: event.target.value })}
+                    fullWidth
+                  >
+                    {defaults?.supportedModels.map((model) => (
+                      <MenuItem key={model} value={model}>
+                        {model}
+                      </MenuItem>
+                    ))}
+                    <MenuItem value={CUSTOM_MODEL_VALUE}>Custom…</MenuItem>
+                  </TextField>
+                  <TextField
+                    select
+                    label="Reasoning effort"
+                    name="reasoning_effort"
+                    value={form.reasoningEffort}
+                    onChange={(event) =>
+                      handleChange({
+                        reasoningEffort: event.target.value,
+                        customReasoningEffort:
+                          event.target.value === CUSTOM_REASONING_VALUE ? form.customReasoningEffort : '',
+                      })
+                    }
+                    fullWidth
+                  >
+                    <MenuItem value="">Automatic</MenuItem>
+                    {reasoningOptions.map((option) => (
+                      <MenuItem key={option} value={option}>
+                        {option.charAt(0).toUpperCase() + option.slice(1)}
+                      </MenuItem>
+                    ))}
+                    <MenuItem value={CUSTOM_REASONING_VALUE}>Custom…</MenuItem>
+                  </TextField>
+                </Stack>
+                {form.model === CUSTOM_MODEL_VALUE && (
+                  <TextField
+                    label="Custom model"
+                    value={form.customModel}
+                    onChange={(event) => handleChange({ customModel: event.target.value })}
+                    placeholder="e.g. gpt-5.2"
+                    fullWidth
+                    required
+                  />
+                )}
+                {form.reasoningEffort === CUSTOM_REASONING_VALUE && (
+                  <TextField
+                    label="Custom reasoning effort"
+                    value={form.customReasoningEffort}
+                    onChange={(event) => handleChange({ customReasoningEffort: event.target.value })}
+                    placeholder="e.g. low"
+                    fullWidth
+                    required
+                  />
+                )}
+              </Stack>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader title="Target node" subheader="Select where this run should execute." />
+            <CardContent>
+              {nodes.length > 1 && (
+                <TextField
+                  select
+                  label="Node"
+                  name="node"
+                  value={form.nodeId}
+                  onChange={(event) => handleChange({ nodeId: event.target.value })}
+                  fullWidth
+                  required
+                  helperText="Choose where the task should run"
+                >
+                  {nodes.map((node) => (
+                    <MenuItem key={node.id} value={node.id}>
+                      {node.name || node.id}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              )}
+              {nodes.length === 1 && (
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Chip label={`Node: ${nodes[0].name || nodes[0].id}`} size="small" />
+                  <Typography variant="body2" color="text.secondary">
+                    Tasks will run on this node.
+                  </Typography>
+                </Stack>
+              )}
+            </CardContent>
+          </Card>
+
+          {headPublicKey && nodes.length > 1 && (
+            <Card>
+              <CardHeader title="Security" subheader="Reference keys for the cluster." />
+              <CardContent>
+                <TextField
+                  label="Head public key"
+                  value={headPublicKey}
+                  multiline
+                  minRows={3}
+                  fullWidth
+                  InputProps={{ readOnly: true }}
+                  helperText="Head key (for reference only)."
+                />
+              </CardContent>
+            </Card>
+          )}
+
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
             <Button type="submit" variant="contained" disabled={loadingDefaults || submitting}>
               {submitting ? 'Launching…' : 'Launch task'}
@@ -344,17 +406,6 @@ function CreateTaskPage() {
               Back to tasks
             </Button>
           </Stack>
-          {headPublicKey && nodes.length > 1 && (
-            <TextField
-              label="Head public key"
-              value={headPublicKey}
-              multiline
-              minRows={3}
-              fullWidth
-              InputProps={{ readOnly: true }}
-              helperText="Head key (for reference only)."
-            />
-          )}
         </Stack>
       )}
     </Paper>
